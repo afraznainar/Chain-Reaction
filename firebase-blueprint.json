@@ -1,0 +1,72 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User statistics and profile data.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "wins": { "type": "number" },
+        "losses": { "type": "number" },
+        "totalGames": { "type": "number" },
+        "avatarConfig": {
+          "type": "object",
+          "properties": {
+            "icon": { "type": "string" },
+            "color": { "type": "string" }
+          }
+        },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "displayName", "wins", "losses"]
+    },
+    "GlobalMessage": {
+      "title": "Global Message",
+      "type": "object",
+      "properties": {
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "text": { "type": "string" },
+        "avatar": {
+          "type": "object",
+          "properties": {
+            "icon": { "type": "string" },
+            "color": { "type": "string" }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["senderId", "senderName", "text", "createdAt"]
+    },
+    "Replay": {
+      "title": "Replay",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "gridWidth": { "type": "number" },
+        "gridHeight": { "type": "number" },
+        "players": { "type": "array" },
+        "moves": { "type": "array" },
+        "winnerId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "gridWidth", "gridHeight", "players", "moves", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Public user profile and match statistics."
+    },
+    "/global_messages/{messageId}": {
+      "schema": "GlobalMessage",
+      "description": "Global chat messages."
+    },
+    "/replays/{replayId}": {
+      "schema": "Replay",
+      "description": "Recorded match replays."
+    }
+  }
+}

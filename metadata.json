@@ -1,0 +1,6 @@
+{
+  "name": "Atomic Chain Reaction",
+  "description": "A high-stakes strategy game of explosive chain reactions. Play with friends in real-time multiplayer mode.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
