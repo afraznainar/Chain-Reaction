@@ -15,12 +15,12 @@ export default function AvatarCustomizer({ currentIcon, currentColor, onSelect }
     <div className="space-y-6 p-6 bg-white/[0.02] border border-white/5 rounded-2xl">
       <div className="flex flex-col items-center gap-4 mb-6">
         <PlayerAvatar icon={currentIcon} color={currentColor} size="xl" />
-        <span className="text-[10px] uppercase tracking-[0.3em] font-black text-white/40">Customize Hologram</span>
+        <span className="text-[10px] uppercase tracking-[0.3em] font-black text-white/40">Customize Character</span>
       </div>
 
       <div className="space-y-4">
         <div>
-          <label className="text-[9px] uppercase tracking-widest font-bold text-white/30 mb-2 block">Spectral Signature</label>
+          <label className="text-[9px] uppercase tracking-widest font-bold text-white/30 mb-2 block">Pick a Color</label>
           <div className="grid grid-cols-4 gap-2">
             {AVATAR_COLORS.map(color => (
               <button
@@ -42,7 +42,7 @@ export default function AvatarCustomizer({ currentIcon, currentColor, onSelect }
         </div>
 
         <div>
-          <label className="text-[9px] uppercase tracking-widest font-bold text-white/30 mb-2 block">Emitter Icon</label>
+          <label className="text-[9px] uppercase tracking-widest font-bold text-white/30 mb-2 block">Pick an Icon</label>
           <div className="grid grid-cols-4 gap-2">
             {Object.entries(AVATAR_ICONS).map(([key, Icon]) => (
               <button

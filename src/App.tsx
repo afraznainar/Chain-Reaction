@@ -3,8 +3,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { socket } from './lib/socket';
 import { GameState, Player, COLOR_MAP, Replay } from './types';
 import { cn } from './lib/utils';
-import { Users, Play, CheckCircle2, User, Trophy, Wallet, Zap, ShieldCheck, LogIn, LogOut, ChevronRight, Volume2, VolumeX, MessageSquare, Film } from 'lucide-react';
-import { auth, signInWithGoogle, updateMatchResult, updateAvatarPreference, getUserStats } from './lib/firebase';
+import { Copy, UserMinus, Globe, BarChart3, Eye, Users, Play, CheckCircle2, User, Trophy, Wallet, Zap, ShieldCheck, LogIn, LogOut, ChevronRight, Volume2, VolumeX, MessageSquare, Film } from 'lucide-react';
+import { auth, signInWithGoogle, updateMatchResult, updateAvatarPreference, getUserStats, saveReplay } from './lib/firebase';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import Leaderboard from './components/Leaderboard';
 import AvatarCustomizer from './components/AvatarCustomizer';
@@ -14,8 +14,37 @@ import GameSettings from './components/GameSettings';
 import ReplayLibrary from './components/ReplayLibrary';
 import ReplayPlayer from './components/ReplayPlayer';
 import RoomBrowser from './components/RoomBrowser';
-import { saveReplay } from './lib/firebase';
-import { Copy, UserMinus, Globe } from 'lucide-react';
+import DetailedStatsModal from './components/DetailedStatsModal';
+import AtomicBurst from './components/AtomicBurst';
+
+function TurnTimer({ endTime, status }: { endTime?: number, status: string }) {
+  const [timeLeft, setTimeLeft] = useState(0);
+
+  useEffect(() => {
+    if (status !== 'playing' || !endTime) return;
+
+    const tick = () => {
+      const now = Date.now();
+      const diff = Math.max(0, Math.ceil((endTime - now) / 1000));
+      setTimeLeft(diff);
+    };
+
+    tick();
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  }, [endTime, status]);
+
+  if (status !== 'playing' || !endTime) return null;
+
+  return (
+    <div className={cn(
+      "text-[10px] sm:text-xs font-black font-mono transition-all",
+      timeLeft <= 2 ? "text-[#ff2e63] scale-110 animate-pulse" : "text-white/30"
+    )}>
+      00:0{timeLeft}
+    </div>
+  );
+}
 
 import ChatPanel from './components/ChatPanel';
 
@@ -33,6 +62,7 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showReplays, setShowReplays] = useState(false);
   const [showRoomBrowser, setShowRoomBrowser] = useState(false);
+  const [showDetailedStats, setShowDetailedStats] = useState(false);
   const [selectedReplay, setSelectedReplay] = useState<Replay | null>(null);
   const [hasReportedResult, setHasReportedResult] = useState(false);
   const [hasSavedReplay, setHasSavedReplay] = useState(false);
@@ -113,7 +143,7 @@ export default function App() {
 
     socket.on('kicked', () => {
       setGameState(null);
-      setError("DANGER: You have been ejected from the arena.");
+      setError("You have been removed from the room.");
       audioController.play('gameOver'); // Or a specific kick sound
     });
 
@@ -227,7 +257,7 @@ export default function App() {
                 >
                   <div className="absolute inset-0 bg-white/5 translate-y-full group-hover:translate-y-0 transition-transform"></div>
                   <LogIn className="w-5 h-5 text-white/50 relative" />
-                  <span className="font-black uppercase tracking-widest text-xs relative">Google Identification</span>
+                  <span className="font-black uppercase tracking-widest text-xs relative">Sign in with Google</span>
                 </button>
               ) : (
                 <div className="flex items-center justify-between bg-white/[0.02] border border-white/5 p-4 rounded-xl">
@@ -242,19 +272,19 @@ export default function App() {
               )}
 
               <div className="space-y-1 border-l-2 border-white/10 pl-4 hover:border-[#ff2e63] transition-colors text-left">
-                <label className="text-[10px] font-black text-white/30 uppercase tracking-[0.2em]">Pilot ID</label>
+                <label className="text-[10px] font-black text-white/30 uppercase tracking-[0.2em]">Your Name</label>
                 <input
                   type="text"
                   value={playerName}
                   onChange={(e) => setPlayerName(e.target.value)}
-                  placeholder="Enter alias..."
+                  placeholder="Enter your name..."
                   className="w-full bg-transparent border-none text-2xl font-bold p-0 outline-none placeholder:text-white/10"
                 />
               </div>
 
               <div className="space-y-1 border-l-2 border-white/10 pl-4 hover:border-[#ff2e63] transition-colors">
                 <div className="flex justify-between items-center pr-2">
-                  <label className="text-[10px] font-black text-white/30 uppercase tracking-[0.2em]">Arena Key</label>
+                  <label className="text-[10px] font-black text-white/30 uppercase tracking-[0.2em]">Room Key</label>
                   <button 
                     type="button" 
                     onClick={handleRandomKey}
@@ -267,7 +297,7 @@ export default function App() {
                   type="text"
                   value={roomId}
                   onChange={(e) => setRoomId(e.target.value)}
-                  placeholder="Insert frequency..."
+                  placeholder="Enter key..."
                   className="w-full bg-transparent border-none text-2xl font-bold p-0 outline-none placeholder:text-white/10"
                   required
                 />
@@ -286,14 +316,14 @@ export default function App() {
                 disabled={isJoining}
                 className="flex-1 px-10 py-4 bg-[#ff2e63] font-black uppercase tracking-widest text-sm hover:skew-x-[-3deg] transition-transform active:scale-95 disabled:opacity-50"
               >
-                {isJoining ? 'Connecting...' : 'Initiate Session'}
+                {isJoining ? 'Connecting...' : 'Join Game'}
               </button>
               <button
                 type="button"
                 onClick={() => setShowRoomBrowser(true)}
                 className="px-6 py-4 border-2 border-[#ff2e63]/30 text-[#ff2e63] font-black uppercase tracking-widest text-[10px] hover:bg-[#ff2e63]/10 transition-colors flex items-center gap-2 active:scale-95"
               >
-                <Globe className="w-4 h-4" /> Join Arena
+                <Globe className="w-4 h-4" /> Browse Rooms
               </button>
             </div>
             
@@ -402,9 +432,12 @@ export default function App() {
             >
               {isMuted ? <VolumeX className="w-4 h-4 text-white/30" /> : <Volume2 className="w-4 h-4 text-[#ff2e63]" />}
             </button>
-            <div className="text-right border-r-2 border-[#ff2e63] pr-4">
-              <p className="text-[9px] uppercase tracking-[0.2em] text-white/50 mb-1">Turn</p>
-              <p className="text-xl sm:text-3xl font-bold text-[#ff2e63] uppercase italic tracking-tighter truncate max-w-[150px]">{gameState.status === 'playing' ? currentPlayer?.name : 'WAITING'}</p>
+            <div className="text-right border-r-2 border-[#ff2e63] pr-4 flex flex-col items-end">
+              <p className="text-[9px] uppercase tracking-[0.2em] text-white/50 mb-1 leading-none">Turn</p>
+              <p className="text-xl sm:text-3xl font-bold text-[#ff2e63] uppercase italic tracking-tighter truncate max-w-[150px] leading-none mb-1">
+                {gameState.status === 'playing' ? currentPlayer?.name : 'WAITING'}
+              </p>
+              <TurnTimer endTime={gameState.turnEndTime} status={gameState.status} />
             </div>
           </div>
           <button 
@@ -433,6 +466,7 @@ export default function App() {
               <GameView 
                 gameState={gameState} 
                 myPlayer={myPlayer} 
+                setShowDetailedStats={setShowDetailedStats}
               />
             )}
         </div>
@@ -538,6 +572,13 @@ export default function App() {
             onClose={() => setSelectedReplay(null)} 
           />
         )}
+        {showDetailedStats && (
+          <DetailedStatsModal 
+            players={gameState.players} 
+            winnerId={gameState.winnerId} 
+            onClose={() => setShowDetailedStats(false)} 
+          />
+        )}
       </AnimatePresence>
     </div>
   );
@@ -570,8 +611,14 @@ function LobbyView({ gameState, myPlayer, handleToggleReady, handleStartGame, ha
          )}
          <div className="text-center sm:text-left">
            <h2 className="text-3xl sm:text-5xl font-black italic uppercase tracking-tight leading-none">{myPlayer?.name || 'Pilot'}</h2>
-           <div className="flex items-center justify-center sm:justify-start gap-4 mt-2">
-              <p className="text-[9px] sm:text-[10px] uppercase font-bold text-white/40 tracking-[0.3em] font-mono">Reactor Core Synchronized</p>
+           <div className="flex flex-wrap items-center justify-center sm:justify-start gap-4 mt-2">
+              <p className="text-[9px] sm:text-[10px] uppercase font-bold text-white/40 tracking-[0.3em] font-mono whitespace-nowrap">Connected</p>
+              {gameState.spectatorCount > 0 && (
+                <div className="flex items-center gap-1.5 px-2 py-0.5 bg-[#ff2e63]/10 border border-[#ff2e63]/20 rounded-full animate-pulse">
+                  <Eye className="w-2.5 h-2.5 text-[#ff2e63]" />
+                  <span className="text-[9px] font-black text-[#ff2e63] uppercase tracking-tighter">{gameState.spectatorCount} Watchers</span>
+                </div>
+              )}
               <button 
                 onClick={handleCopyKey}
                 className="flex items-center gap-1.5 px-2 py-0.5 border border-white/10 rounded-full hover:bg-white/5 transition-colors group/key"
@@ -607,7 +654,7 @@ function LobbyView({ gameState, myPlayer, handleToggleReady, handleStartGame, ha
               <div className="text-center">
                 <p className="text-[10px] font-black uppercase tracking-widest truncate max-w-[100px]">{p.name}</p>
                 <div className={cn("mt-2 px-2 py-1 rounded-sm text-[8px] font-black uppercase inline-block", p.isReady ? "bg-green-500 text-black" : "bg-white/5 text-white/30")}>
-                  {p.isReady ? 'Active' : 'Standby'}
+                  {p.isReady ? 'Ready' : 'Not Ready'}
                 </div>
               </div>
             </motion.div>
@@ -620,7 +667,7 @@ function LobbyView({ gameState, myPlayer, handleToggleReady, handleStartGame, ha
               onClick={() => setShowSettings(!showSettings)}
               className="py-4 border border-white/10 text-white/40 text-[10px] font-black uppercase tracking-[0.3em] skew-x-[-3deg] hover:bg-white/5 transition-all"
             >
-              {showSettings ? 'Hide Parameters' : 'Adjust Arena Parameters'}
+              {showSettings ? 'Hide Settings' : 'Room Settings'}
             </button>
           )}
 
@@ -647,7 +694,7 @@ function LobbyView({ gameState, myPlayer, handleToggleReady, handleStartGame, ha
                 : "bg-transparent border-white/20 text-white/50 hover:border-white hover:text-white"
             )}
           >
-            {myPlayer?.isReady ? 'Sync Confirmed' : 'Confirm Readiness'}
+            {myPlayer?.isReady ? 'Ready' : 'Click to Ready'}
           </button>
           
           {myPlayer?.isHost && (
@@ -657,26 +704,26 @@ function LobbyView({ gameState, myPlayer, handleToggleReady, handleStartGame, ha
                  disabled={gameState.players.length >= 8}
                  className="py-4 border border-[#08f7fe]/40 text-[#08f7fe]/70 text-[10px] font-black uppercase tracking-[0.3em] skew-x-[-3deg] hover:border-[#08f7fe] hover:text-[#08f7fe] transition-all disabled:opacity-20"
                >
-                 Infect with AI Alpha
+                 Add AI Player
                </button>
                <button 
                  onClick={handleStartGame}
                  disabled={!allReady}
                  className="py-4 bg-[#ff2e63] text-white text-[10px] font-black uppercase tracking-[0.4em] disabled:opacity-20 transition-all hover:scale-105 active:scale-95 skew-x-[-3deg]"
                >
-                 Engage Reactor
+                 Start Game
                </button>
              </>
           )}
           {!allReady && myPlayer?.isHost && (
-            <p className="text-[9px] text-[#ff2e63] font-bold uppercase italic mt-2">All pilots must be ready for departure</p>
+            <p className="text-[9px] text-[#ff2e63] font-bold uppercase italic mt-2">Everyone must be ready to start</p>
           )}
        </div>
     </div>
   );
 }
 
-function GameView({ gameState, myPlayer }: any) {
+function GameView({ gameState, myPlayer, setShowDetailedStats }: any) {
   const isMyTurn = gameState.players[gameState.currentTurnIndex].id === socket.id;
   const [explosions, setExplosions] = useState<{ id: number; x: number; y: number; color: string }[]>([]);
   const [shake, setShake] = useState(false);
@@ -702,8 +749,32 @@ function GameView({ gameState, myPlayer }: any) {
     }
   }, [gameState.id, gameState.lastMoveTimestamp]); // Trigger on new move
 
+  const [gameEnded, setGameEnded] = useState(false);
+
+  useEffect(() => {
+    if (gameState.status === 'gameover' && !gameEnded) {
+      setGameEnded(true);
+      audioController.play('gameOver');
+    } else if (gameState.status !== 'gameover') {
+      setGameEnded(false);
+    }
+  }, [gameState.status]);
+
   return (
     <div className="w-full flex flex-col items-center">
+       {/* Nuclear Flash Effect */}
+       <AnimatePresence>
+         {gameEnded && (
+           <motion.div 
+             initial={{ opacity: 0 }}
+             animate={{ opacity: [0, 1, 0] }}
+             exit={{ opacity: 0 }}
+             transition={{ duration: 1.5, times: [0, 0.1, 1] }}
+             className="fixed inset-0 bg-white z-[200] pointer-events-none"
+           />
+         )}
+       </AnimatePresence>
+
        <div className="relative">
          <motion.div 
            animate={shake ? {
@@ -751,52 +822,100 @@ function GameView({ gameState, myPlayer }: any) {
        </div>
 
        {gameState.status === 'gameover' && (
-         <div className="mt-8 text-center space-y-6 sm:space-y-8 bg-white/[0.02] border border-white/10 p-6 sm:p-10 rounded-2xl sm:rounded-3xl backdrop-blur-xl relative overflow-hidden group w-full max-w-2xl">
-            <div className="absolute inset-0 bg-gradient-to-br from-yellow-500/10 to-transparent pointer-events-none" />
+         <motion.div 
+           initial={{ opacity: 0, scale: 0.9, filter: 'blur(20px)' }}
+           animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+           className="mt-8 text-center space-y-8 bg-white/[0.02] border border-white/10 p-6 sm:p-12 rounded-2xl sm:rounded-[3rem] backdrop-blur-3xl relative overflow-hidden group w-full max-w-2xl"
+         >
+            <div className="absolute inset-0 bg-gradient-to-br from-[#ff2e63]/5 to-transparent pointer-events-none" />
+            
+            {/* Celebration Effect */}
+            <AtomicBurst color={gameState.players.find((p: Player) => p.id === gameState.winnerId)?.avatar?.color || COLOR_MAP[gameState.players.find((p: Player) => p.id === gameState.winnerId)?.color as keyof typeof COLOR_MAP] || '#f5d300'} />
             
             <div className="relative z-10">
-              <h2 className="text-5xl sm:text-7xl font-black italic tracking-tighter uppercase text-yellow-500 skew-x-[-6deg] underline decoration-[#ff2e63] decoration-8 mb-4">Aced!</h2>
-              <p className="text-lg sm:text-2xl font-bold uppercase tracking-[0.1em] sm:tracking-[0.2em] text-white/50 mb-6 sm:mb-10">
-                Victor: <span style={{ color: COLOR_MAP[gameState.players.find((p: Player) => p.id === gameState.winnerId)?.color as keyof typeof COLOR_MAP] }}>{gameState.players.find((p: Player) => p.id === gameState.winnerId)?.name}</span>
-              </p>
+              <motion.div
+                initial={{ y: -20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.2 }}
+                className="inline-flex items-center gap-3 px-6 py-2 bg-white/5 border border-white/10 rounded-full mb-8"
+              >
+                <Trophy className="w-5 h-5 text-[#f5d300]" />
+                <span className="text-[10px] sm:text-[12px] uppercase font-black tracking-[0.4em] text-[#f5d300]">Game Over</span>
+              </motion.div>
+              
+              <div className="flex flex-col items-center gap-6 mb-12">
+                <motion.div
+                  animate={{ 
+                    scale: [1, 1.1, 1],
+                    boxShadow: ['0 0 0px transparent', '0 0 40px rgba(245,211,0,0.3)', '0 0 0px transparent']
+                  }}
+                  transition={{ duration: 2, repeat: Infinity }}
+                >
+                  <PlayerAvatar 
+                    icon={gameState.players.find((p: Player) => p.id === gameState.winnerId)?.avatar?.icon} 
+                    color={gameState.players.find((p: Player) => p.id === gameState.winnerId)?.avatar?.color || COLOR_MAP[gameState.players.find((p: Player) => p.id === gameState.winnerId)?.color as keyof typeof COLOR_MAP]} 
+                    size="xl" 
+                  />
+                </motion.div>
+                
+                <div className="space-y-2">
+                  <h2 className="text-5xl sm:text-7xl font-black italic tracking-tighter uppercase text-white skew-x-[-6deg] leading-none">
+                    {gameState.players.find((p: Player) => p.id === gameState.winnerId)?.name}
+                  </h2>
+                  <p className="text-[10px] uppercase font-bold text-white/30 tracking-[0.5em] font-mono">Winner!</p>
+                </div>
+              </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-8 mb-8 sm:mb-12 border-y border-white/10 py-6 sm:py-8">
-                {gameState.players.map(p => (
-                  <div key={p.id} className={cn("text-center space-y-2 p-4 rounded-xl border border-transparent", p.id === gameState.winnerId ? "bg-white/5 border-white/10" : "opacity-60")}>
-                    <PlayerAvatar icon={p.avatar?.icon} color={p.avatar?.color || COLOR_MAP[p.color]} size="md" className="mx-auto mb-2" />
-                    <p className="text-[10px] font-black uppercase tracking-widest truncate">{p.name}</p>
-                    <div className="grid grid-cols-2 gap-2 mt-4">
-                      <div className="bg-black/40 p-2 rounded">
-                        <p className="text-[7px] uppercase font-bold text-white/30 truncate">Explosions</p>
-                        <p className="text-base sm:text-lg font-black italic">{p.stats?.explosionsTriggered || 0}</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-12">
+                {gameState.players.map(p => {
+                  const isWinner = p.id === gameState.winnerId;
+                  const color = p.avatar?.color || COLOR_MAP[p.color];
+                  
+                  return (
+                    <motion.div 
+                      key={p.id} 
+                      whileHover={{ y: -5 }}
+                      className={cn(
+                        "text-center space-y-2 p-4 rounded-2xl border transition-all", 
+                        isWinner ? "bg-white/5 border-white/20 ring-2 ring-white/10" : "bg-white/[0.02] border-white/5 opacity-50 grayscale"
+                      )}
+                    >
+                      <div className="relative inline-block">
+                        <PlayerAvatar icon={p.avatar?.icon} color={color} size="sm" className="mx-auto" />
+                        {isWinner && <div className="absolute -top-1 -right-1 w-3 h-3 bg-[#f5d300] rounded-full ring-2 ring-black" />}
                       </div>
-                      <div className="bg-black/40 p-2 rounded">
-                        <p className="text-[7px] uppercase font-bold text-white/30 truncate">Captures</p>
-                        <p className="text-base sm:text-lg font-black italic">{p.stats?.cellsCaptured || 0}</p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                      <p className="text-[8px] font-black uppercase tracking-widest truncate">{p.name}</p>
+                      <p className="text-xl font-black italic tracking-tighter" style={{ color }}>{p.stats?.explosionsTriggered || 0}</p>
+                      <p className="text-[6px] uppercase font-black text-white/20">Explosions</p>
+                    </motion.div>
+                  );
+                })}
               </div>
               
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                <button 
+                  onClick={() => setShowDetailedStats(true)}
+                  className="w-full sm:w-auto px-8 py-4 bg-white/5 border border-white/10 text-white font-black uppercase tracking-widest text-[10px] hover:bg-white/10 transition-colors flex items-center justify-center gap-3 active:scale-95"
+                >
+                  <BarChart3 className="w-5 h-5" /> Score Details
+                </button>
                 {myPlayer?.isHost && (
                   <button 
                     onClick={() => socket.emit('play_again', gameState.id)} 
-                    className="w-full sm:w-auto px-12 py-4 bg-[#ff2e63] text-white font-black uppercase tracking-[0.3em] text-xs hover:skew-x-[-3deg] transition-all hover:scale-105 active:scale-95"
+                    className="w-full sm:w-auto px-12 py-4 bg-[#ff2e63] text-white font-black uppercase tracking-widest text-[10px] hover:skew-x-[-3deg] transition-all hover:scale-105 active:scale-95 shadow-[0_0_30px_rgba(255,46,99,0.3)] flex items-center justify-center gap-3"
                   >
-                    Sync Restart
+                    <Zap className="w-5 h-5 fill-current" /> Play Again
                   </button>
                 )}
                 <button 
-                  onClick={() => window.location.reload()} 
-                  className="w-full sm:w-auto px-12 py-4 border border-white/20 text-white font-black uppercase tracking-widest text-xs hover:bg-white hover:text-black transition-colors"
+                  onClick={() => socket.emit('leave_game', gameState.id)} 
+                  className="w-full sm:w-auto px-8 py-4 bg-white/5 border border-white/10 text-white font-black uppercase tracking-widest text-[10px] hover:border-white/30 transition-colors flex items-center justify-center gap-3 active:scale-95"
                 >
-                  Return to Base
+                  <LogOut className="w-5 h-5" /> Exit
                 </button>
               </div>
             </div>
-         </div>
+         </motion.div>
        )}
     </div>
   );

@@ -46,6 +46,97 @@ async function startServer() {
     return board;
   }
 
+  const TURN_DURATION = 6000;
+
+  function findNextPlayer(game: GameState) {
+    let nextIndex = (game.currentTurnIndex + 1) % game.players.length;
+    let attempts = 0;
+    while (game.players[nextIndex].isEliminated && attempts < game.players.length) {
+      nextIndex = (nextIndex + 1) % game.players.length;
+      attempts++;
+    }
+    game.currentTurnIndex = nextIndex;
+  }
+
+  function checkAndTriggerAI(game: GameState, roomId: string) {
+    const nextPlayer = game.players[game.currentTurnIndex];
+    if (nextPlayer.isAI && !nextPlayer.isEliminated && game.status === 'playing') {
+      setTimeout(() => {
+        const move = calculateBestMove(game);
+        if (move) {
+          handleMove(game, roomId, move.x, move.y);
+        } else {
+          console.log(`AI ${nextPlayer.name} could not find a move, skipping...`);
+          findNextPlayer(game);
+          game.turnEndTime = Date.now() + TURN_DURATION;
+          game.lastMoveTimestamp = Date.now();
+          io.to(roomId).emit("game_updated", game);
+          checkAndTriggerAI(game, roomId);
+        }
+      }, 1000); // Delayed for better UX
+    }
+  }
+
+  function handleMove(game: GameState, roomId: string, x: number, y: number) {
+    const currentPlayer = game.players[game.currentTurnIndex];
+    if (currentPlayer.stats) currentPlayer.stats.movesMade++;
+    currentPlayer.hasMoved = true;
+    
+    // Record move
+    game.moveHistory.push({
+      x,
+      y,
+      playerId: currentPlayer.id,
+      timestamp: Date.now()
+    });
+
+    game.lastExplosions = []; // Reset on new move
+    processMove(game, x, y, currentPlayer.id);
+    
+    // Update Peak Cells Controlled for all players after the move
+    game.players.forEach(p => {
+      if (!p.stats) return;
+      let controlledCount = 0;
+      game.board.forEach(row => row.forEach(cell => {
+        if (cell.playerId === p.id) controlledCount++;
+      }));
+      p.stats.peakCellsControlled = Math.max(p.stats.peakCellsControlled || 0, controlledCount);
+    });
+
+    checkWinCondition(game);
+
+    if (game.status === 'playing') {
+      findNextPlayer(game);
+      game.turnEndTime = Date.now() + TURN_DURATION;
+    } else {
+      game.turnEndTime = undefined;
+    }
+
+    game.lastMoveTimestamp = Date.now();
+    io.to(roomId).emit("game_updated", game);
+
+    if (game.status === 'playing') {
+      checkAndTriggerAI(game, roomId);
+    }
+  }
+
+  // Turn Timeout Check Interval
+  setInterval(() => {
+    const now = Date.now();
+    for (const roomId in games) {
+      const game = games[roomId];
+      if (game.status === 'playing' && game.turnEndTime && now > game.turnEndTime) {
+        // Switch to next player
+        console.log(`Turn timeout for room ${roomId}, player index ${game.currentTurnIndex}`);
+        findNextPlayer(game);
+        game.turnEndTime = Date.now() + TURN_DURATION;
+        game.lastMoveTimestamp = Date.now();
+        io.to(roomId).emit("game_updated", game);
+        checkAndTriggerAI(game, roomId);
+      }
+    }
+  }, 1000);
+
   io.on("connection", (socket) => {
     console.log("User connected:", socket.id);
 
@@ -99,9 +190,17 @@ async function startServer() {
              isHost: game.players.length === 0,
              isEliminated: false,
              isAI: false,
+             hasMoved: false,
              userId: userId,
              avatar: avatar,
-             stats: { explosionsTriggered: 0, cellsCaptured: 0, movesMade: 0 }
+             stats: { 
+               explosionsTriggered: 0, 
+               cellsCaptured: 0, 
+               movesMade: 0,
+               maxExplosionsInTurn: 0,
+               maxChainReaction: 0,
+               peakCellsControlled: 0
+             }
            };
            game.players.push(player);
         } else {
@@ -131,14 +230,57 @@ async function startServer() {
     socket.on("leave_game", (roomId: string) => {
       const game = games[roomId];
       if (game) {
-        game.players = game.players.filter(p => p.id !== socket.id);
-        if (game.players.length === 0) {
-          delete games[roomId];
-        } else {
-          // If host left, assign new host
-          if (!game.players.find(p => p.isHost)) {
-            const newHost = game.players.find(p => !p.isAI);
-            if (newHost) newHost.isHost = true;
+        const playerIndex = game.players.findIndex(p => p.id === socket.id);
+        if (playerIndex !== -1) {
+          const player = game.players[playerIndex];
+          
+          if (game.status === 'playing') {
+            const playerToRemove = game.players[playerIndex];
+            game.players.splice(playerIndex, 1);
+            
+            // Clear orbs
+            game.board.forEach(row => row.forEach(cell => {
+              if (cell.playerId === socket.id) {
+                cell.playerId = null;
+                cell.count = 0;
+              }
+            }));
+
+            // Adjust currentTurnIndex
+            if (playerIndex < game.currentTurnIndex) {
+              game.currentTurnIndex--;
+            } else if (playerIndex === game.currentTurnIndex) {
+              if (game.currentTurnIndex >= game.players.length) {
+                game.currentTurnIndex = 0;
+              }
+              game.turnEndTime = Date.now() + TURN_DURATION;
+            }
+
+            if (game.players.length <= 1) {
+              game.status = 'gameover';
+              game.winnerId = game.players[0]?.id || null;
+              game.turnEndTime = undefined;
+            } else {
+              // Trigger next turn if it was the current player who left
+              if (playerIndex === game.currentTurnIndex) {
+                 checkWinCondition(game); // Re-check win condition as someone else might have won
+                 if (game.status === 'playing') {
+                   checkAndTriggerAI(game, roomId);
+                 }
+              }
+            }
+          } else {
+            game.players.splice(playerIndex, 1);
+            if (game.players.length === 0) {
+              delete games[roomId];
+              socket.leave(roomId);
+              delete socketData[socket.id];
+              return;
+            }
+            if (player.isHost) {
+              const newHost = game.players.find(p => !p.isAI);
+              if (newHost) newHost.isHost = true;
+            }
           }
           io.to(roomId).emit("game_updated", game);
         }
@@ -154,12 +296,13 @@ async function startServer() {
       if (player?.isHost) {
         game.status = 'lobby';
         game.winnerId = null;
+        game.turnEndTime = undefined;
         game.moveHistory = [];
         game.board = createBoard(game.gridWidth, game.gridHeight);
         game.players.forEach(p => {
           p.isReady = p.isAI ? true : false;
           p.isEliminated = false;
-          p.stats = { explosionsTriggered: 0, cellsCaptured: 0, movesMade: 0 };
+          p.stats = { explosionsTriggered: 0, cellsCaptured: 0, movesMade: 0, maxExplosionsInTurn: 0, maxChainReaction: 0, peakCellsControlled: 0 };
         });
         io.to(roomId).emit("game_updated", game);
       }
@@ -198,8 +341,9 @@ async function startServer() {
         isHost: false,
         isEliminated: false,
         isAI: true,
+        hasMoved: false,
         avatar: { icon: 'cpu', color: COLOR_MAP[PLAYER_COLORS[game.players.length % PLAYER_COLORS.length]] },
-        stats: { explosionsTriggered: 0, cellsCaptured: 0, movesMade: 0 }
+        stats: { explosionsTriggered: 0, cellsCaptured: 0, movesMade: 0, maxExplosionsInTurn: 0, maxChainReaction: 0, peakCellsControlled: 0 }
       };
       game.players.push(aiPlayer);
       io.to(roomId).emit("game_updated", game);
@@ -223,6 +367,7 @@ async function startServer() {
         game.status = 'playing';
         game.board = createBoard(game.gridWidth, game.gridHeight);
         game.currentTurnIndex = 0;
+        game.turnEndTime = Date.now() + TURN_DURATION;
         io.to(roomId).emit("game_updated", game);
 
         // If host started and it's AI turn (unlikely but possible)
@@ -242,46 +387,6 @@ async function startServer() {
 
       handleMove(game, roomId, x, y);
     });
-
-    function handleMove(game: GameState, roomId: string, x: number, y: number) {
-      const currentPlayer = game.players[game.currentTurnIndex];
-      if (currentPlayer.stats) currentPlayer.stats.movesMade++;
-      
-      // Record move
-      game.moveHistory.push({
-        x,
-        y,
-        playerId: currentPlayer.id,
-        timestamp: Date.now()
-      });
-
-      game.lastExplosions = []; // Reset on new move
-      processMove(game, x, y, currentPlayer.id);
-      checkWinCondition(game);
-
-      if (game.status === 'playing') {
-        findNextPlayer(game);
-      }
-
-      game.lastMoveTimestamp = Date.now();
-      io.to(roomId).emit("game_updated", game);
-
-      if (game.status === 'playing') {
-        checkAndTriggerAI(game, roomId);
-      }
-    }
-
-    function checkAndTriggerAI(game: GameState, roomId: string) {
-      const nextPlayer = game.players[game.currentTurnIndex];
-      if (nextPlayer.isAI && !nextPlayer.isEliminated && game.status === 'playing') {
-        setTimeout(() => {
-          const move = calculateBestMove(game);
-          if (move) {
-            handleMove(game, roomId, move.x, move.y);
-          }
-        }, 1000); // Delayed for better UX
-      }
-    }
 
     socket.on("get_active_rooms", () => {
       const activeRooms = Object.values(games)
@@ -319,6 +424,63 @@ async function startServer() {
         if (game) {
           if (isSpectator) {
             game.spectatorCount = Math.max(0, game.spectatorCount - 1);
+          } else {
+            // Handle player disconnection during game
+            const playerIndex = game.players.findIndex(p => p.id === socket.id);
+            if (playerIndex !== -1) {
+              const player = game.players[playerIndex];
+              
+              if (game.status === 'playing') {
+                const playerToRemove = game.players[playerIndex];
+                game.players.splice(playerIndex, 1);
+                
+                // Clear their orbs from the board
+                game.board.forEach(row => row.forEach(cell => {
+                  if (cell.playerId === socket.id) {
+                    cell.playerId = null;
+                    cell.count = 0;
+                  }
+                }));
+
+                // Adjust currentTurnIndex
+                if (playerIndex < game.currentTurnIndex) {
+                  game.currentTurnIndex--;
+                } else if (playerIndex === game.currentTurnIndex) {
+                  if (game.currentTurnIndex >= game.players.length) {
+                    game.currentTurnIndex = 0;
+                  }
+                  game.turnEndTime = Date.now() + TURN_DURATION;
+                }
+
+                // Check if anyone left or if we have a winner
+                if (game.players.length <= 1) {
+                  game.status = 'gameover';
+                  game.winnerId = game.players[0]?.id || null;
+                  game.turnEndTime = undefined;
+                } else {
+                  // Trigger next turn if it was the current player who left
+                  if (playerIndex === game.currentTurnIndex) {
+                    checkWinCondition(game);
+                    if (game.status === 'playing') {
+                      checkAndTriggerAI(game, roomId);
+                    }
+                  }
+                }
+              } else {
+                // Just remove in lobby
+                game.players.splice(playerIndex, 1);
+                if (game.players.length === 0) {
+                  delete games[roomId];
+                  return;
+                }
+                
+                // If host left, assign new host
+                if (player.isHost) {
+                  const newHost = game.players.find(p => !p.isAI);
+                  if (newHost) newHost.isHost = true;
+                }
+              }
+            }
           }
           io.to(roomId).emit("game_updated", game);
         }
@@ -328,8 +490,10 @@ async function startServer() {
   });
 
   function processMove(game: GameState, startX: number, startY: number, playerId: string) {
-    const queue: { x: number; y: number }[] = [{ x: startX, y: startY }];
+    const queue: { x: number; y: number; depth: number }[] = [{ x: startX, y: startY, depth: 0 }];
     const board = game.board;
+    let explosionsInThisTurn = 0;
+    let maxTurnDepth = 0;
 
     // First orb addition
     const firstCell = board[startY][startX];
@@ -338,10 +502,12 @@ async function startServer() {
 
     // Chain reaction
     while (queue.length > 0) {
-      const { x, y } = queue.shift()!;
+      const { x, y, depth } = queue.shift()!;
+      maxTurnDepth = Math.max(maxTurnDepth, depth);
       const cell = board[y][x];
 
       if (cell.count >= cell.capacity) {
+        explosionsInThisTurn++;
         // Track explosion
         const p = game.players.find(pl => pl.id === playerId);
         const color = p?.avatar?.color || (p ? COLOR_MAP[p.color] : '#fff');
@@ -368,59 +534,54 @@ async function startServer() {
             nCell.count++;
             nCell.playerId = playerId;
             if (nCell.count >= nCell.capacity) {
-              queue.push({ x: nx, y: ny });
+              queue.push({ x: nx, y: ny, depth: depth + 1 });
             }
           }
         }
       }
+    }
+
+    const p = game.players.find(pl => pl.id === playerId);
+    if (p?.stats) {
+      p.stats.maxExplosionsInTurn = Math.max(p.stats.maxExplosionsInTurn || 0, explosionsInThisTurn);
+      p.stats.maxChainReaction = Math.max(p.stats.maxChainReaction || 0, maxTurnDepth);
     }
   }
 
   function checkWinCondition(game: GameState) {
     const activePlayers = game.players.filter(p => !p.isEliminated);
     
-    // A player is eliminated if they have 0 orbs AND at least one move has been made globally
-    // But usually in Chain Reaction, elimination starts after everyone has made at least one move.
-    // Or simpler: check if any orbs exist for each player.
-    
     const orbsByPlayer: Record<string, number> = {};
     let totalOrbs = 0;
+    let occupiedCells = 0;
     
     game.board.forEach(row => {
       row.forEach(cell => {
         if (cell.playerId) {
           orbsByPlayer[cell.playerId] = (orbsByPlayer[cell.playerId] || 0) + cell.count;
           totalOrbs += cell.count;
+          occupiedCells++;
         }
       });
     });
 
-    // Strategy: Only eliminate players who have HAD a chance to move (totalOrbs > players.count is a rough proxy)
-    // Better: Keep track of which players have moved.
-    // For now, let's just check if totalOrbs is sufficient to trigger elimination logic.
-    if (totalOrbs < game.players.length) return;
-
+    // Each player needs to have placed at least one orb before elimination logic kicks in
     game.players.forEach(p => {
-      if (!orbsByPlayer[p.id]) {
+      if (!p.isEliminated && p.hasMoved && !orbsByPlayer[p.id]) {
         p.isEliminated = true;
       }
     });
 
     const remainingPlayers = game.players.filter(p => !p.isEliminated);
+    
+    // Win condition: Only one player remains AND they occupy all current orbs
+    // (In reality, if they are the only ones left, they occupy all current orbs)
+    // The user wants "covers the entire board", let's interpret this as surviving alone.
     if (remainingPlayers.length === 1 && totalOrbs > 0) {
       game.status = 'gameover';
       game.winnerId = remainingPlayers[0].id;
+      game.turnEndTime = undefined;
     }
-  }
-
-  function findNextPlayer(game: GameState) {
-    let nextIndex = (game.currentTurnIndex + 1) % game.players.length;
-    let attempts = 0;
-    while (game.players[nextIndex].isEliminated && attempts < game.players.length) {
-      nextIndex = (nextIndex + 1) % game.players.length;
-      attempts++;
-    }
-    game.currentTurnIndex = nextIndex;
   }
 
   function calculateBestMove(game: GameState): { x: number; y: number } | null {

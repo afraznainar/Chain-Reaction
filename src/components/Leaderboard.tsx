@@ -9,6 +9,7 @@ interface UserStats {
   displayName: string;
   wins: number;
   losses: number;
+  points: number;
   totalGames: number;
   photoURL?: string;
   avatarConfig?: {
@@ -84,8 +85,12 @@ export default function Leaderboard({ onClose }: { onClose: () => void }) {
                 
                 <div className="flex items-center justify-between sm:justify-end gap-6 sm:gap-8 w-full sm:w-auto border-t border-white/5 sm:border-none pt-4 sm:pt-0">
                    <div className="text-center">
+                     <div className="text-[9px] sm:text-[10px] uppercase tracking-tighter text-white/30 mb-1">Points</div>
+                     <div className="font-black text-xl sm:text-2xl text-[#ff2e63] italic leading-none">{player.points || 0}</div>
+                   </div>
+                   <div className="text-center">
                      <div className="text-[9px] sm:text-[10px] uppercase tracking-tighter text-white/30 mb-1">Wins</div>
-                     <div className="font-black text-xl sm:text-2xl text-[#f5d300] italic leading-none">{player.wins}</div>
+                     <div className="font-black text-sm sm:text-lg text-[#f5d300] italic leading-none">{player.wins}</div>
                    </div>
                    <div className="text-center">
                      <div className="text-[9px] sm:text-[10px] uppercase tracking-tighter text-white/30 mb-1">Ratio</div>

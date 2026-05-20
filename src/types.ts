@@ -8,6 +8,7 @@ export interface Player {
   isHost: boolean;
   isEliminated: boolean;
   isAI?: boolean;
+  hasMoved?: boolean;
   userId?: string;
   avatar?: {
     icon: string;
@@ -17,6 +18,9 @@ export interface Player {
     explosionsTriggered: number;
     cellsCaptured: number;
     movesMade: number;
+    maxExplosionsInTurn: number;
+    maxChainReaction: number;
+    peakCellsControlled: number;
   };
 }
 
@@ -54,6 +58,7 @@ export interface GameState {
   lastExplosions: { x: number; y: number; color: string }[];
   maxPlayers: number;
   moveHistory: ReplayMove[];
+  turnEndTime?: number;
 }
 
 export interface ReplayMove extends Move {

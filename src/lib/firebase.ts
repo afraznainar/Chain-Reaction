@@ -24,6 +24,7 @@ export async function signInWithGoogle() {
         photoURL: user.photoURL || '',
         wins: 0,
         losses: 0,
+        points: 0,
         totalGames: 0,
         updatedAt: new Date().toISOString()
       });
@@ -47,6 +48,7 @@ export async function updateMatchResult(uid: string, isWin: boolean) {
   await updateDoc(userRef, {
     wins: isWin ? increment(1) : increment(0),
     losses: isWin ? increment(0) : increment(1),
+    points: isWin ? increment(10) : increment(0),
     totalGames: increment(1),
     updatedAt: new Date().toISOString()
   });
@@ -61,7 +63,7 @@ export async function updateAvatarPreference(uid: string, avatar: { icon: string
 }
 
 export async function getTopPlayers() {
-  const q = query(collection(db, 'users'), orderBy('wins', 'desc'), limit(10));
+  const q = query(collection(db, 'users'), orderBy('points', 'desc'), limit(10));
   const querySnapshot = await getDocs(q);
   return querySnapshot.docs.map(doc => doc.data());
 }
