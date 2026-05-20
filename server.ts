@@ -49,9 +49,10 @@ async function startServer() {
   const TURN_DURATION = 6000;
 
   function findNextPlayer(game: GameState) {
+    if (game.players.length === 0) return;
     let nextIndex = (game.currentTurnIndex + 1) % game.players.length;
     let attempts = 0;
-    while (game.players[nextIndex].isEliminated && attempts < game.players.length) {
+    while (game.players[nextIndex]?.isEliminated && attempts < game.players.length) {
       nextIndex = (nextIndex + 1) % game.players.length;
       attempts++;
     }
@@ -60,7 +61,7 @@ async function startServer() {
 
   function checkAndTriggerAI(game: GameState, roomId: string) {
     const nextPlayer = game.players[game.currentTurnIndex];
-    if (nextPlayer.isAI && !nextPlayer.isEliminated && game.status === 'playing') {
+    if (nextPlayer && nextPlayer.isAI && !nextPlayer.isEliminated && game.status === 'playing') {
       setTimeout(() => {
         const move = calculateBestMove(game);
         if (move) {
@@ -79,6 +80,15 @@ async function startServer() {
 
   function handleMove(game: GameState, roomId: string, x: number, y: number) {
     const currentPlayer = game.players[game.currentTurnIndex];
+    if (!currentPlayer) return;
+
+    // Save previous state for potential undo
+    game.previousState = {
+      board: JSON.parse(JSON.stringify(game.board)),
+      turnIndex: game.currentTurnIndex,
+      players: JSON.parse(JSON.stringify(game.players))
+    };
+
     if (currentPlayer.stats) currentPlayer.stats.movesMade++;
     currentPlayer.hasMoved = true;
     
@@ -135,10 +145,24 @@ async function startServer() {
         checkAndTriggerAI(game, roomId);
       }
     }
-  }, 1000);
+  }, 500);
 
   io.on("connection", (socket) => {
     console.log("User connected:", socket.id);
+
+    socket.on("skip_turn", (roomId: string) => {
+      const game = games[roomId];
+      if (!game || game.status !== 'playing') return;
+      const host = game.players.find(p => p.id === socket.id);
+      if (host?.isHost) {
+        console.log(`Manual skip in room ${roomId} by host`);
+        findNextPlayer(game);
+        game.turnEndTime = Date.now() + TURN_DURATION;
+        game.lastMoveTimestamp = Date.now();
+        io.to(roomId).emit("game_updated", game);
+        checkAndTriggerAI(game, roomId);
+      }
+    });
 
     socket.on("join_game", ({ roomId, playerName, isSpectator, userId, avatar }: { roomId: string; playerName: string; isSpectator?: boolean; userId?: string; avatar?: { icon: string; color: string } }) => {
       socket.join(roomId);
@@ -193,6 +217,8 @@ async function startServer() {
              hasMoved: false,
              userId: userId,
              avatar: avatar,
+             undoChances: 0,
+             totalUndosUsed: 0,
              stats: { 
                explosionsTriggered: 0, 
                cellsCaptured: 0, 
@@ -302,6 +328,8 @@ async function startServer() {
         game.players.forEach(p => {
           p.isReady = p.isAI ? true : false;
           p.isEliminated = false;
+          p.undoChances = 0;
+          p.totalUndosUsed = 0;
           p.stats = { explosionsTriggered: 0, cellsCaptured: 0, movesMade: 0, maxExplosionsInTurn: 0, maxChainReaction: 0, peakCellsControlled: 0 };
         });
         io.to(roomId).emit("game_updated", game);
@@ -343,6 +371,8 @@ async function startServer() {
         isAI: true,
         hasMoved: false,
         avatar: { icon: 'cpu', color: COLOR_MAP[PLAYER_COLORS[game.players.length % PLAYER_COLORS.length]] },
+        undoChances: 0,
+        totalUndosUsed: 0,
         stats: { explosionsTriggered: 0, cellsCaptured: 0, movesMade: 0, maxExplosionsInTurn: 0, maxChainReaction: 0, peakCellsControlled: 0 }
       };
       game.players.push(aiPlayer);
@@ -386,6 +416,56 @@ async function startServer() {
       if (cell.playerId !== null && cell.playerId !== currentPlayer.id) return;
 
       handleMove(game, roomId, x, y);
+    });
+    
+    socket.on("watch_ad", (roomId: string) => {
+      const game = games[roomId];
+      if (!game) return;
+      const player = game.players.find(p => p.id === socket.id);
+      if (player && player.totalUndosUsed < 3) {
+        player.undoChances = 1;
+        io.to(roomId).emit("game_updated", game);
+      }
+    });
+
+    socket.on("undo_move", (roomId: string) => {
+      const game = games[roomId];
+      if (!game || !game.previousState || game.status !== 'playing') return;
+      
+      const player = game.players.find(p => p.id === socket.id);
+      const playerIndex = game.players.findIndex(p => p.id === socket.id);
+      
+      if (!player || player.undoChances <= 0) return;
+      
+      // Ensure only the person who just moved can undo
+      if (playerIndex !== game.previousState.turnIndex) return;
+
+      // Revert board and turn
+      game.board = game.previousState.board;
+      game.currentTurnIndex = game.previousState.turnIndex;
+      
+      // Specifically revert player elimination statuses and stats from the snapshot
+      game.previousState.players.forEach(prevP => {
+        const currentP = game.players.find(cp => cp.id === prevP.id);
+        if (currentP) {
+          currentP.isEliminated = prevP.isEliminated;
+          currentP.hasMoved = prevP.hasMoved;
+          currentP.stats = prevP.stats;
+        }
+      });
+
+      game.previousState = undefined;
+      
+      // Consume chance
+      player.undoChances = 0;
+      player.totalUndosUsed++;
+
+      game.turnEndTime = Date.now() + TURN_DURATION;
+      game.lastMoveTimestamp = Date.now();
+      io.to(roomId).emit("game_updated", game);
+      
+      // If after undo it's AI turn (unlikely but safe)
+      checkAndTriggerAI(game, roomId);
     });
 
     socket.on("get_active_rooms", () => {
@@ -585,7 +665,9 @@ async function startServer() {
   }
 
   function calculateBestMove(game: GameState): { x: number; y: number } | null {
-    const aiId = game.players[game.currentTurnIndex].id;
+    const currentPlayer = game.players[game.currentTurnIndex];
+    if (!currentPlayer) return null;
+    const aiId = currentPlayer.id;
     const validMoves: { x: number; y: number; score: number }[] = [];
 
     for (let y = 0; y < game.gridHeight; y++) {

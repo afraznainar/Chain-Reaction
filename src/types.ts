@@ -22,6 +22,8 @@ export interface Player {
     maxChainReaction: number;
     peakCellsControlled: number;
   };
+  undoChances: number;
+  totalUndosUsed: number;
 }
 
 export interface ChatMessage {
@@ -59,6 +61,11 @@ export interface GameState {
   maxPlayers: number;
   moveHistory: ReplayMove[];
   turnEndTime?: number;
+  previousState?: {
+    board: Cell[][];
+    turnIndex: number;
+    players: Player[];
+  };
 }
 
 export interface ReplayMove extends Move {

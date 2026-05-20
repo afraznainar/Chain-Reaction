@@ -46,6 +46,127 @@ function TurnTimer({ endTime, status }: { endTime?: number, status: string }) {
   );
 }
 
+function AdOverlay({ onComplete, onClose }: { onComplete: () => void, onClose: () => void }) {
+  const [timeLeft, setTimeLeft] = useState(5);
+
+  useEffect(() => {
+    if (timeLeft === 0) {
+      onComplete();
+      return;
+    }
+    const timer = setInterval(() => setTimeLeft(t => t - 1), 1000);
+    return () => clearInterval(timer);
+  }, [timeLeft]);
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[1000] bg-black/95 flex flex-col items-center justify-center p-8"
+    >
+      <div className="absolute top-8 left-8 flex items-center gap-3">
+        <Film className="w-5 h-5 text-[#ff2e63]" />
+        <span className="text-xs font-black uppercase tracking-[0.3em] text-white/40">Sponsored Content</span>
+      </div>
+
+      <div className="text-center space-y-12 max-w-lg">
+        <div className="space-y-4">
+          <h2 className="text-4xl sm:text-6xl font-black italic uppercase tracking-tighter skew-x-[-6deg]">Unlock<br/><span className="text-[#ff2e63]">Undo Capability</span></h2>
+          <p className="text-sm text-white/40 font-medium">Watching this short briefing will synchronize your core for a temporal reversal.</p>
+        </div>
+
+        <div className="relative w-24 h-24 sm:w-32 sm:h-32 mx-auto">
+          <svg className="w-full h-full -rotate-90">
+            <circle
+              cx="50%"
+              cy="50%"
+              r="45%"
+              className="fill-none stroke-white/5 stroke-4"
+            />
+            <motion.circle
+              cx="50%"
+              cy="50%"
+              r="45%"
+              className="fill-none stroke-[#ff2e63] stroke-4"
+              strokeDasharray="283"
+              animate={{ strokeDashoffset: [283, 0] }}
+              transition={{ duration: 5, ease: "linear" }}
+            />
+          </svg>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span className="text-4xl font-black italic">{timeLeft}s</span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4 py-3 px-6 bg-white/5 border border-white/10 rounded-full">
+          <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+          <span className="text-[10px] uppercase font-black tracking-widest text-white/60">Core Sync in Progress...</span>
+        </div>
+      </div>
+
+      <button 
+        onClick={onClose}
+        className="absolute top-8 right-8 text-white/20 hover:text-white transition-colors"
+      >
+        <LogOut className="w-6 h-6" />
+      </button>
+    </motion.div>
+  );
+}
+
+function UndoControl({ myPlayer, onWatchAd, onUndo, gameState }: any) {
+  if (!myPlayer || gameState.status !== 'playing') return null;
+
+  return (
+    <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+       <div className="flex flex-col items-center gap-4 pointer-events-auto">
+         <AnimatePresence mode="wait">
+           {myPlayer.undoChances > 0 ? (
+             <motion.button
+               key="undo"
+               initial={{ y: 50, opacity: 0, scale: 0.8 }}
+               animate={{ y: 0, opacity: 1, scale: 1 }}
+               exit={{ y: 20, opacity: 0, scale: 0.8 }}
+               onClick={onUndo}
+               className="px-8 py-4 bg-[#f5d300] text-black font-black uppercase tracking-[0.2em] italic skew-x-[-6deg] shadow-[0_0_50px_rgba(245,211,0,0.4)] flex items-center gap-3 hover:scale-110 active:scale-95 transition-all text-sm border-b-4 border-black/20"
+             >
+               <Zap className="w-6 h-6 fill-current animate-pulse" />
+               Temporal Reversal ({myPlayer.totalUndosUsed}/3)
+             </motion.button>
+           ) : myPlayer.totalUndosUsed < 3 ? (
+             <motion.button
+               key="get-undo"
+               initial={{ y: 50, opacity: 0, scale: 0.8 }}
+               animate={{ y: 0, opacity: 1, scale: 1 }}
+               exit={{ y: 20, opacity: 0, scale: 0.8 }}
+               onClick={onWatchAd}
+               className="px-8 py-4 bg-black/80 border-2 border-[#f5d300] text-[#f5d300] font-black uppercase tracking-[0.2em] italic skew-x-[-6deg] shadow-[0_0_30px_rgba(245,211,0,0.1)] flex items-center gap-3 hover:bg-[#f5d300]/10 active:scale-95 transition-all text-sm group"
+             >
+               <div className="relative">
+                 <Film className="w-6 h-6 group-hover:rotate-12 transition-transform" />
+                 <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full animate-ping" />
+               </div>
+               Restore Timeline ({myPlayer.totalUndosUsed}/3)
+             </motion.button>
+           ) : null}
+         </AnimatePresence>
+         
+         {/* Subtle instruction */}
+         {(myPlayer.undoChances > 0 || myPlayer.totalUndosUsed < 3) && (
+           <motion.div 
+             initial={{ opacity: 0 }}
+             animate={{ opacity: 1 }}
+             className="text-[9px] uppercase font-black tracking-widest text-white/20 italic"
+           >
+             Watch short briefing to sync current timeline
+           </motion.div>
+         )}
+       </div>
+    </div>
+  );
+}
+
 import ChatPanel from './components/ChatPanel';
 
 export default function App() {
@@ -63,6 +184,7 @@ export default function App() {
   const [showReplays, setShowReplays] = useState(false);
   const [showRoomBrowser, setShowRoomBrowser] = useState(false);
   const [showDetailedStats, setShowDetailedStats] = useState(false);
+  const [showAd, setShowAd] = useState(false);
   const [selectedReplay, setSelectedReplay] = useState<Replay | null>(null);
   const [hasReportedResult, setHasReportedResult] = useState(false);
   const [hasSavedReplay, setHasSavedReplay] = useState(false);
@@ -98,7 +220,12 @@ export default function App() {
     socket.on('game_updated', (updatedGame: GameState) => {
       // Play game over sound
       if (updatedGame.status === 'gameover' && gameState?.status !== 'gameover') {
-        audioController.play('gameOver');
+        audioController.play('win');
+      }
+
+      // Play join sound if a new player appeared in lobby
+      if (updatedGame.status === 'lobby' && gameState?.status === 'lobby' && updatedGame.players.length > (gameState?.players?.length || 0)) {
+        audioController.play('join');
       }
 
       setGameState(updatedGame);
@@ -207,6 +334,25 @@ export default function App() {
   const handleUpdateSettings = (settings: any) => {
     if (gameState) {
       socket.emit('update_settings', { roomId: gameState.id, ...settings });
+    }
+  };
+
+  const handleWatchAd = () => {
+    setShowAd(true);
+  };
+
+  const onAdComplete = () => {
+    if (gameState) {
+      socket.emit('watch_ad', gameState.id);
+      audioController.play('undo'); // Play success sound for ad complete sync
+    }
+    setShowAd(false);
+  };
+
+  const handleUndo = () => {
+    if (gameState) {
+      socket.emit('undo_move', gameState.id);
+      audioController.play('undo');
     }
   };
 
@@ -386,10 +532,31 @@ export default function App() {
 
   const myPlayer = gameState.players.find(p => p.id === socket.id);
   const currentPlayer = gameState.players[gameState.currentTurnIndex];
+  const turnColor = currentPlayer?.avatar?.color || COLOR_MAP[currentPlayer?.color as keyof typeof COLOR_MAP] || '#ff2e63';
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white flex flex-col p-4 sm:p-10 font-sans overflow-x-hidden">
-      <header className="flex flex-col lg:flex-row justify-between items-start gap-8 lg:gap-0 mb-8 sm:mb-12">
+    <div 
+      className="min-h-screen transition-colors duration-1000 flex flex-col p-4 sm:p-10 font-sans overflow-x-hidden relative"
+      style={{ backgroundColor: gameState ? (gameState.status === 'playing' ? `${turnColor}05` : '#050505') : '#050505' }}
+      onClick={() => audioController.startMusic()}
+    >
+      {/* Background Glow */}
+      <AnimatePresence>
+        {gameState.status === 'playing' && (
+          <motion.div
+            key={currentPlayer?.id}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 0.15 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 pointer-events-none z-0"
+            style={{ 
+              background: `radial-gradient(circle at 50% 50%, ${turnColor}, transparent 70%)` 
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+      <header className="flex flex-col lg:flex-row justify-between items-start gap-8 lg:gap-0 mb-8 sm:mb-12 relative z-10">
         <div className="w-full lg:w-auto">
           <h1 className="text-5xl sm:text-7xl font-black tracking-tighter leading-none italic uppercase skew-x-[-6deg] underline decoration-[#ff2e63] decoration-[4px] sm:decoration-8">
             Chain<br/>Reaction
@@ -446,6 +613,30 @@ export default function App() {
           >
             {hasPremium ? 'Premium Active' : 'View Store'}
           </button>
+          
+          <div className="flex items-center gap-3 w-full lg:w-auto">
+            {gameState.status === 'playing' && (
+              <div className="flex-1 lg:w-48 bg-white/5 h-2 rounded-full overflow-hidden relative">
+                <motion.div 
+                  initial={{ width: "100%" }}
+                  animate={{ width: "0%" }}
+                  key={gameState.currentTurnIndex + '-' + gameState.turnEndTime}
+                  transition={{ duration: (gameState.turnEndTime! - Date.now()) / 1000, ease: "linear" }}
+                  className="absolute inset-y-0 left-0 bg-[#ff2e63]"
+                />
+              </div>
+            )}
+            
+            {gameState.status === 'playing' && myPlayer?.isHost && (
+               <button
+                onClick={() => socket.emit('skip_turn', gameState.id)}
+                className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white/60 text-[10px] font-black uppercase tracking-widest transition-all h-[32px] flex items-center justify-center"
+                title="Force skip turn if someone is stuck"
+              >
+                Skip
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
@@ -579,6 +770,15 @@ export default function App() {
             onClose={() => setShowDetailedStats(false)} 
           />
         )}
+        {showAd && (
+          <AdOverlay onComplete={onAdComplete} onClose={() => setShowAd(false)} />
+        )}
+        <UndoControl 
+          myPlayer={myPlayer} 
+          gameState={gameState} 
+          onWatchAd={handleWatchAd} 
+          onUndo={handleUndo} 
+        />
       </AnimatePresence>
     </div>
   );
@@ -724,7 +924,7 @@ function LobbyView({ gameState, myPlayer, handleToggleReady, handleStartGame, ha
 }
 
 function GameView({ gameState, myPlayer, setShowDetailedStats }: any) {
-  const isMyTurn = gameState.players[gameState.currentTurnIndex].id === socket.id;
+  const isMyTurn = gameState.players[gameState.currentTurnIndex]?.id === socket.id;
   const [explosions, setExplosions] = useState<{ id: number; x: number; y: number; color: string }[]>([]);
   const [shake, setShake] = useState(false);
 
@@ -734,15 +934,24 @@ function GameView({ gameState, myPlayer, setShowDetailedStats }: any) {
       const shakeTimer = setTimeout(() => setShake(false), 300);
       
       // Process explosions with a slight stagger for visual effect
+      // Use a slightly faster stagger for massive chains to reduce "lag feeling"
+      const staggerDelay = gameState.lastExplosions.length > 20 ? 30 : 50;
+      
       gameState.lastExplosions.forEach((exp: any, index: number) => {
         setTimeout(() => {
-          setExplosions(prev => [...prev, { ...exp, id: Date.now() + index }]);
+          const explosionId = Date.now() + Math.random();
+          setExplosions(prev => {
+            // Cap simultaneous explosions to prevent massive performance drops on weak devices
+            if (prev.length > 30) return [...prev.slice(1), { ...exp, id: explosionId }];
+            return [...prev, { ...exp, id: explosionId }];
+          });
           audioController.play('explode');
-          // Auto remove explosion after animation
+          
+          // Auto cleanup explosion after it's definitely done animating
           setTimeout(() => {
-            setExplosions(prev => prev.filter(e => e.id !== (Date.now() + index))); // This logic is slightly flawed due to Date.now(), using index is better
-          }, 1000);
-        }, index * 50); // Stagger
+            setExplosions(prev => prev.filter(e => e.id !== explosionId));
+          }, 1200);
+        }, index * staggerDelay);
       });
 
       return () => clearTimeout(shakeTimer);
@@ -754,11 +963,29 @@ function GameView({ gameState, myPlayer, setShowDetailedStats }: any) {
   useEffect(() => {
     if (gameState.status === 'gameover' && !gameEnded) {
       setGameEnded(true);
-      audioController.play('gameOver');
+      audioController.play('win');
     } else if (gameState.status !== 'gameover') {
       setGameEnded(false);
     }
   }, [gameState.status]);
+
+  useEffect(() => {
+    if (gameState.status === 'playing') {
+      audioController.play('turnChange');
+    }
+  }, [gameState.currentTurnIndex]);
+
+  useEffect(() => {
+    const checkClock = setInterval(() => {
+      if (gameState.status === 'playing' && gameState.turnEndTime) {
+        const remaining = gameState.turnEndTime - Date.now();
+        if (remaining > 0 && remaining < 3000) {
+          audioController.play('clock');
+        }
+      }
+    }, 1000);
+    return () => clearInterval(checkClock);
+  }, [gameState.status, gameState.turnEndTime]);
 
   return (
     <div className="w-full flex flex-col items-center">
@@ -814,7 +1041,6 @@ function GameView({ gameState, myPlayer, setShowDetailedStats }: any) {
                   color={exp.color} 
                   gridWidth={gameState.gridWidth} 
                   gridHeight={gameState.gridHeight}
-                  onComplete={() => setExplosions(prev => prev.filter(e => e.id !== exp.id))}
                 />
               ))}
             </AnimatePresence>
@@ -921,23 +1147,25 @@ function GameView({ gameState, myPlayer, setShowDetailedStats }: any) {
   );
 }
 
-function ExplosionEffect({ x, y, color, gridWidth, gridHeight, onComplete }: any) {
+function ExplosionEffect({ x, y, color, gridWidth, gridHeight }: any) {
   const left = `${(x + 0.5) * (100 / gridWidth)}%`;
   const top = `${(y + 0.5) * (100 / gridHeight)}%`;
 
-  useEffect(() => {
-    const timer = setTimeout(onComplete, 1000);
-    return () => clearTimeout(timer);
-  }, []);
-
   return (
-    <div className="absolute" style={{ left, top }}>
+    <motion.div 
+      initial={{ opacity: 1 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
+      className="absolute will-change-transform" 
+      style={{ left, top }}
+    >
       {/* Shockwave */}
       <motion.div
         initial={{ scale: 0, opacity: 0.8 }}
         animate={{ scale: 4, opacity: 0 }}
         transition={{ duration: 0.6, ease: "easeOut" }}
-        className="absolute w-20 h-20 -translate-x-1/2 -translate-y-1/2 rounded-full border-2"
+        className="absolute w-20 h-20 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 will-change-transform"
         style={{ borderColor: color, boxShadow: `0 0 40px ${color}` }}
       />
       
@@ -953,7 +1181,7 @@ function ExplosionEffect({ x, y, color, gridWidth, gridHeight, onComplete }: any
             scale: 0
           }}
           transition={{ duration: 0.8, ease: "circOut" }}
-          className="absolute w-2 h-2 -translate-x-1/2 -translate-y-1/2 rounded-full"
+          className="absolute w-2 h-2 -translate-x-1/2 -translate-y-1/2 rounded-full will-change-transform"
           style={{ backgroundColor: color, boxShadow: `0 0 10px ${color}` }}
         />
       ))}
@@ -973,11 +1201,11 @@ function ExplosionEffect({ x, y, color, gridWidth, gridHeight, onComplete }: any
         className="absolute w-1 h-40 bg-gradient-to-b from-transparent via-white to-transparent -translate-x-1/2 -translate-y-1/2"
         style={{ color: color }}
       />
-    </div>
+    </motion.div>
   );
 }
 
-function CellComponent({ cell, isMyTurn, roomId, myId, players }: any) {
+const CellComponent = React.memo(({ cell, isMyTurn, roomId, myId, players }: any) => {
   const handleClick = () => {
     if (!isMyTurn) return;
     if (cell.playerId !== null && cell.playerId !== myId) return;
@@ -993,7 +1221,7 @@ function CellComponent({ cell, isMyTurn, roomId, myId, players }: any) {
       onClick={handleClick}
       disabled={!isMyTurn}
       className={cn(
-        "relative flex items-center justify-center border border-white/5 bg-white/[0.02] transition-all overflow-hidden group",
+        "relative flex items-center justify-center border border-white/5 bg-white/[0.02] transition-all overflow-hidden group will-change-[background-color,border-color]",
         isMyTurn && (cell.playerId === null || cell.playerId === myId) ? "hover:bg-white/[0.05] cursor-pointer" : "cursor-default",
         cell.playerId && "border-opacity-20"
       )}
@@ -1008,7 +1236,7 @@ function CellComponent({ cell, isMyTurn, roomId, myId, players }: any) {
                initial={{ scale: 0 }}
                animate={{ scale: 1 }}
                exit={{ scale: 0 }}
-               className="w-3 h-3 md:w-4 md:h-4 rounded-full relative"
+               className="w-3 h-3 md:w-4 md:h-4 rounded-full relative will-change-transform"
                style={{ 
                  backgroundColor: orbColor,
                  boxShadow: `0 0 15px ${orbColor}`
@@ -1035,4 +1263,4 @@ function CellComponent({ cell, isMyTurn, roomId, myId, players }: any) {
       </div>
     </button>
   );
-}
+});

@@ -8,6 +8,8 @@ import { Send, Globe, MessageSquare, X } from 'lucide-react';
 import { cn } from '../lib/utils';
 import PlayerAvatar from './PlayerAvatar';
 
+import { audioController } from '../lib/audio';
+
 interface ChatPanelProps {
   roomId?: string;
   user?: any;
@@ -41,6 +43,7 @@ export default function ChatPanel({ roomId, user, avatar, onClose }: ChatPanelPr
     if (!roomId) return;
     socket.on('room_chat_message', (msg: ChatMessage) => {
       setRoomMessages(prev => [...prev, msg]);
+      audioController.play('message');
     });
     return () => {
       socket.off('room_chat_message');
