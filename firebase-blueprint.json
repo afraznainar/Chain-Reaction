@@ -53,9 +53,48 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "gridWidth", "gridHeight", "players", "moves", "createdAt"]
+    },
+    "Tournament": {
+      "title": "Tournament",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "prize": { "type": "number" },
+        "playersCount": { "type": "number" },
+        "maxPlayers": { "type": "number" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "prize", "playersCount", "maxPlayers", "status"]
+    },
+    "TournamentRecord": {
+      "title": "Tournament Record",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "username": { "type": "string" },
+        "avatar": {
+          "type": "object",
+          "properties": {
+            "icon": { "type": "string" },
+            "color": { "type": "string" }
+          }
+        },
+        "score": { "type": "number" },
+        "rank": { "type": "number" },
+        "status": { "type": "string" },
+        "chancesUsed": { "type": "number" },
+        "joinedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "username", "score", "status", "chancesUsed", "joinedAt"]
     }
   },
   "firestore": {
+    "/tournaments/{tournamentId}": {
+      "schema": "Tournament"
+    },
+    "/tournament_participants/{recordId}": {
+      "schema": "TournamentRecord"
+    },
     "/users/{userId}": {
       "schema": "User",
       "description": "Public user profile and match statistics."

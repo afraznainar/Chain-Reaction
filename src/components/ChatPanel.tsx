@@ -126,8 +126,8 @@ export default function ChatPanel({ roomId, user, avatar, onClose }: ChatPanelPr
             No transmissions detected
           </div>
         )}
-        {messages.map((msg) => (
-          <div key={msg.id} className="group">
+        {messages.map((msg, idx) => (
+          <div key={msg.id || `msg-${idx}`} className="group">
             <div className="flex items-start gap-2">
               <PlayerAvatar icon={msg.avatar?.icon} color={msg.avatar?.color} size="sm" className="mt-1" />
               <div className="flex-1 min-w-0">

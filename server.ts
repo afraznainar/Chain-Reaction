@@ -664,80 +664,212 @@ async function startServer() {
     }
   }
 
+  function copyGameState(game: GameState): GameState {
+    return {
+      ...game,
+      board: game.board.map(row => row.map(cell => ({ ...cell }))),
+      players: game.players.map(p => ({ ...p, stats: p.stats ? { ...p.stats } : undefined })),
+      lastExplosions: [...game.lastExplosions],
+      moveHistory: [...game.moveHistory]
+    };
+  }
+
+  function evaluateBoard(game: GameState, aiPlayerId: string): number {
+    if (game.status === 'gameover') {
+      return game.winnerId === aiPlayerId ? 1000000 : -1000000;
+    }
+
+    const aiPlayer = game.players.find(p => p.id === aiPlayerId);
+    if (!aiPlayer || aiPlayer.isEliminated) return -1000000;
+
+    let score = 0;
+    const gridHeight = game.gridHeight;
+    const gridWidth = game.gridWidth;
+
+    for (let y = 0; y < gridHeight; y++) {
+      for (let x = 0; x < gridWidth; x++) {
+        const cell = game.board[y][x];
+        if (!cell.playerId) {
+          // Weighted empty corners/edges
+          const isCorner = (x === 0 || x === gridWidth - 1) && (y === 0 || y === gridHeight - 1);
+          const isEdge = (x === 0 || x === gridWidth - 1) || (y === 0 || y === gridHeight - 1);
+          if (isCorner) score += 2;
+          else if (isEdge) score += 1;
+          continue;
+        }
+
+        const isMine = cell.playerId === aiPlayerId;
+        const multiplier = isMine ? 1 : -1;
+
+        // Basic metrics
+        score += multiplier * 15; // Controlling a cell
+        score += multiplier * cell.count * 2; // Weight of orbs
+
+        if (isMine) {
+          // Strategic position bonuses
+          const isCorner = (x === 0 || x === gridWidth - 1) && (y === 0 || y === gridHeight - 1);
+          const isEdge = (x === 0 || x === gridWidth - 1) || (y === 0 || y === gridHeight - 1);
+          
+          if (isCorner) score += 40;
+          else if (isEdge) score += 15;
+
+          // Criticality bonus (offensive potential)
+          if (cell.count === cell.capacity - 1) {
+            score += 20;
+            
+            // Extra bonus if adjacent to enemy cells (pressure)
+            const neighbors = [
+              { nx: x + 1, ny: y }, { nx: x - 1, ny: y },
+              { nx: x, ny: y + 1 }, { nx: x, ny: y - 1 }
+            ];
+            for (const { nx, ny } of neighbors) {
+              if (nx >= 0 && nx < gridWidth && ny >= 0 && ny < gridHeight) {
+                const nCell = game.board[ny][nx];
+                if (nCell.playerId && nCell.playerId !== aiPlayerId) {
+                  score += 15; 
+                }
+              }
+            }
+          }
+
+          // Defensive check (danger detection)
+          const neighbors = [
+            { nx: x + 1, ny: y }, { nx: x - 1, ny: y },
+            { nx: x, ny: y + 1 }, { nx: x, ny: y - 1 }
+          ];
+          for (const { nx, ny } of neighbors) {
+            if (nx >= 0 && nx < gridWidth && ny >= 0 && ny < gridHeight) {
+              const nCell = game.board[ny][nx];
+              if (nCell.playerId && nCell.playerId !== aiPlayerId) {
+                // If neighbor is an enemy critical cell, my cell is in danger
+                if (nCell.count === nCell.capacity - 1) {
+                  score -= 50; 
+                }
+              }
+            }
+          }
+        } else {
+          // Enemy cells
+          if (cell.count === cell.capacity - 1) {
+            score -= 30; // High threat from enemy critical cells
+          }
+        }
+      }
+    }
+
+    return score;
+  }
+
+  function minimax(
+    game: GameState,
+    depth: number,
+    alpha: number,
+    beta: number,
+    isMaximizing: boolean,
+    aiPlayerId: string
+  ): number {
+    if (depth === 0 || game.status === 'gameover') {
+      return evaluateBoard(game, aiPlayerId);
+    }
+
+    const currentPlayer = game.players[game.currentTurnIndex];
+    if (!currentPlayer || currentPlayer.isEliminated) {
+      const nextGame = copyGameState(game);
+      findNextPlayer(nextGame);
+      return minimax(nextGame, depth, alpha, beta, nextGame.players[nextGame.currentTurnIndex]?.id === aiPlayerId, aiPlayerId);
+    }
+
+    const moves = [];
+    for (let y = 0; y < game.gridHeight; y++) {
+      for (let x = 0; x < game.gridWidth; x++) {
+        const cell = game.board[y][x];
+        if (cell.playerId === null || cell.playerId === currentPlayer.id) {
+          moves.push({ x, y });
+        }
+      }
+    }
+
+    // Heuristic sort moves to improve pruning (prioritize critical cells and corners)
+    moves.sort((a, b) => {
+      const cellA = game.board[a.y][a.x];
+      const cellB = game.board[b.y][b.x];
+      const scoreA = (cellA.count === cellA.capacity - 1 ? 10 : 0) + (cellA.capacity <= 3 ? 5 : 0);
+      const scoreB = (cellB.count === cellB.capacity - 1 ? 10 : 0) + (cellB.capacity <= 3 ? 5 : 0);
+      return scoreB - scoreA;
+    });
+
+    if (isMaximizing) {
+      let maxEval = -Infinity;
+      for (const move of moves) {
+        const nextGame = copyGameState(game);
+        processMove(nextGame, move.x, move.y, currentPlayer.id);
+        checkWinCondition(nextGame);
+        if (nextGame.status === 'playing') findNextPlayer(nextGame);
+        
+        const evalScore = minimax(nextGame, depth - 1, alpha, beta, nextGame.players[nextGame.currentTurnIndex]?.id === aiPlayerId, aiPlayerId);
+        maxEval = Math.max(maxEval, evalScore);
+        alpha = Math.max(alpha, evalScore);
+        if (beta <= alpha) break;
+      }
+      return maxEval;
+    } else {
+      let minEval = Infinity;
+      for (const move of moves) {
+        const nextGame = copyGameState(game);
+        processMove(nextGame, move.x, move.y, currentPlayer.id);
+        checkWinCondition(nextGame);
+        if (nextGame.status === 'playing') findNextPlayer(nextGame);
+        
+        const evalScore = minimax(nextGame, depth - 1, alpha, beta, nextGame.players[nextGame.currentTurnIndex]?.id === aiPlayerId, aiPlayerId);
+        minEval = Math.min(minEval, evalScore);
+        beta = Math.min(beta, evalScore);
+        if (beta <= alpha) break;
+      }
+      return minEval;
+    }
+  }
+
   function calculateBestMove(game: GameState): { x: number; y: number } | null {
     const currentPlayer = game.players[game.currentTurnIndex];
     if (!currentPlayer) return null;
     const aiId = currentPlayer.id;
-    const validMoves: { x: number; y: number; score: number }[] = [];
 
+    const possibleMoves = [];
     for (let y = 0; y < game.gridHeight; y++) {
       for (let x = 0; x < game.gridWidth; x++) {
         const cell = game.board[y][x];
         if (cell.playerId === null || cell.playerId === aiId) {
-          const score = evaluateMove(game, x, y, aiId);
-          validMoves.push({ x, y, score });
+          possibleMoves.push({ x, y });
         }
       }
     }
 
-    if (validMoves.length === 0) return null;
+    if (possibleMoves.length === 0) return null;
 
-    // Pick highest score
-    validMoves.sort((a, b) => b.score - a.score);
-    
-    // Add a bit of randomness among top moves for variety
-    const topMoves = validMoves.filter(m => m.score === validMoves[0].score);
-    return topMoves[Math.floor(Math.random() * topMoves.length)];
-  }
+    let bestMove = null;
+    let bestScore = -Infinity;
 
-  function evaluateMove(game: GameState, x: number, y: number, playerId: string): number {
-    // Clone board state
-    const boardClone: Cell[][] = JSON.parse(JSON.stringify(game.board));
-    const gameClone: GameState = { ...game, board: boardClone };
-    
-    processMove(gameClone, x, y, playerId);
-    
-    let score = 0;
-    let myOrbs = 0;
-    let enemyOrbs = 0;
-    let myCells = 0;
-    let enemyCells = 0;
-    let myCritical = 0;
-    let enemyCritical = 0;
+    // Use Depth 2 for multi-player to keep response time reasonable
+    // (Search my move and the worst-case immediate response)
+    const DEPTH = 2;
 
-    for (let r = 0; r < gameClone.gridHeight; r++) {
-      for (let c = 0; c < gameClone.gridWidth; c++) {
-        const cell = boardClone[r][c];
-        if (cell.playerId === playerId) {
-          myOrbs += cell.count;
-          myCells++;
-          if (cell.count === cell.capacity - 1) myCritical++;
-        } else if (cell.playerId !== null) {
-          enemyOrbs += cell.count;
-          enemyCells++;
-          if (cell.count === cell.capacity - 1) enemyCritical++;
-        }
+    for (const move of possibleMoves) {
+      const simulation = copyGameState(game);
+      processMove(simulation, move.x, move.y, aiId);
+      checkWinCondition(simulation);
+      if (simulation.status === 'playing') findNextPlayer(simulation);
+
+      const score = minimax(simulation, DEPTH - 1, -Infinity, Infinity, simulation.players[simulation.currentTurnIndex]?.id === aiId, aiId);
+      
+      if (score > bestScore) {
+        bestScore = score;
+        bestMove = move;
+      } else if (score === bestScore && Math.random() > 0.5) {
+        bestMove = move; // Add small randomness for top moves
       }
     }
 
-    // Heuristic
-    if (enemyCells === 0 && myCells > 0) return 10000; // Winning move
-    
-    score += myCells * 5;
-    score += myOrbs * 2;
-    score -= enemyCells * 10;
-    score -= enemyOrbs * 1;
-    score += myCritical * 3;
-    score -= enemyCritical * 5;
-
-    // Corner/Edge bonuses
-    const isCorner = (x === 0 || x === game.gridWidth - 1) && (y === 0 || y === game.gridHeight - 1);
-    const isEdge = (x === 0 || x === game.gridWidth - 1) || (y === 0 || y === game.gridHeight - 1);
-    
-    if (isCorner) score += 15;
-    else if (isEdge) score += 5;
-
-    return score;
+    return bestMove;
   }
 
   if (process.env.NODE_ENV !== "production") {

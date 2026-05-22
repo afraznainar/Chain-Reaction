@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { socket } from './lib/socket';
 import { GameState, Player, COLOR_MAP, Replay } from './types';
 import { cn } from './lib/utils';
-import { Copy, UserMinus, Globe, BarChart3, Eye, Users, Play, CheckCircle2, User, Trophy, Wallet, Zap, ShieldCheck, LogIn, LogOut, ChevronRight, Volume2, VolumeX, MessageSquare, Film } from 'lucide-react';
+import { Copy, UserMinus, Globe, BarChart3, Eye, Users, Play, CheckCircle2, User, Trophy, Wallet, Zap, ShieldCheck, LogIn, LogOut, ChevronRight, Volume2, VolumeX, MessageSquare, Film, Mail } from 'lucide-react';
 import { auth, signInWithGoogle, updateMatchResult, updateAvatarPreference, getUserStats, saveReplay } from './lib/firebase';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import Leaderboard from './components/Leaderboard';
@@ -168,6 +168,9 @@ function UndoControl({ myPlayer, onWatchAd, onUndo, gameState }: any) {
 }
 
 import ChatPanel from './components/ChatPanel';
+import GmailPanel from './components/GmailPanel';
+import TournamentPanel from './components/TournamentPanel';
+import { updateTournamentScore } from './lib/firebase';
 
 export default function App() {
   const [gameState, setGameState] = useState<GameState | null>(null);
@@ -178,6 +181,9 @@ export default function App() {
   const [hasPremium, setHasPremium] = useState(false);
   const [isJoiningAsSpectator, setIsJoiningAsSpectator] = useState(false);
   const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [showGmail, setShowGmail] = useState(false);
+  const [showTournament, setShowTournament] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -190,6 +196,7 @@ export default function App() {
   const [hasSavedReplay, setHasSavedReplay] = useState(false);
   const [avatar, setAvatar] = useState({ icon: 'zap', color: '#ff2e63' });
   const [isMuted, setIsMuted] = useState(false);
+  const [isAuthChecking, setIsAuthChecking] = useState(true);
 
   useEffect(() => {
     audioController.setMuted(isMuted);
@@ -198,6 +205,10 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
       setUser(u);
+      setIsAuthChecking(false);
+      if (!u) {
+        setAccessToken(null);
+      }
       if (u) {
         setPlayerName(u.displayName || '');
         // Load avatar preference
@@ -237,6 +248,10 @@ export default function App() {
         if (myPlayerInGame && !myPlayerInGame.isAI) {
           const isWin = updatedGame.winnerId === socket.id;
           updateMatchResult(user.uid, isWin).catch(console.error);
+          
+          // Tournament scoring
+          updateTournamentScore(user.uid, isWin ? 100 : 0, isWin).catch(console.error);
+          
           setHasReportedResult(true);
         }
 
@@ -299,7 +314,10 @@ export default function App() {
 
   const handleLogin = async () => {
     try {
-      await signInWithGoogle();
+      const { user, accessToken } = await signInWithGoogle();
+      if (accessToken) {
+        setAccessToken(accessToken);
+      }
     } catch (err) {
       console.error(err);
     }
@@ -365,425 +383,507 @@ export default function App() {
   const handleBuyPremium = async () => {
     try {
       const response = await fetch('/api/create-checkout-session', { method: 'POST' });
+      if (!response.ok) {
+        throw new Error('Service Unavailable or Network Error');
+      }
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        throw new Error('Expected JSON response from server');
+      }
       const data = await response.json();
       // In a real app, window.location.href = data.url;
       // Since it's a mock, we'll just set premium locally for demo
       setHasPremium(true);
-      alert('Mock Checkout Successful! You now have Premium features.');
+      // audioController.play('success');
     } catch (e) {
-      console.error(e);
+      console.error('Checkout error:', e);
     }
   };
 
-  if (!gameState) {
+  const myPlayer = gameState?.players.find(p => p.id === socket.id);
+  const currentPlayer = gameState?.players[gameState?.currentTurnIndex ?? 0];
+  const turnColor = currentPlayer?.avatar?.color || (currentPlayer ? COLOR_MAP[currentPlayer.color as keyof typeof COLOR_MAP] : '#ff2e63') || '#ff2e63';
+
+  if (isAuthChecking) {
     return (
-      <div className="min-h-screen bg-[#050505] text-white flex flex-col items-center justify-center p-4 sm:p-10 font-sans overflow-x-hidden">
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="w-full max-w-md space-y-8 sm:space-y-12 text-left"
-        >
-          <header className="mb-8 sm:mb-12">
-            <h1 className="text-6xl sm:text-8xl font-black italic tracking-tighter leading-[0.8] uppercase skew-x-[-6deg] underline decoration-[#ff2e63] decoration-8">
-              Chain<br/>Reaction
-            </h1>
-            <div className="mt-6 flex items-center gap-3">
-              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-              <span className="text-[10px] uppercase tracking-[0.3em] font-medium text-white/40">v.2.4.0 Ready for Deployment</span>
-            </div>
-          </header>
-
-          <form onSubmit={handleJoin} className="space-y-8">
-            <div className="space-y-6">
-              {!user ? (
-                <button
-                  type="button"
-                  onClick={handleLogin}
-                  className="w-full flex items-center justify-center gap-4 py-4 border-2 border-white/10 rounded-xl hover:border-white/30 transition-all group overflow-hidden relative"
-                >
-                  <div className="absolute inset-0 bg-white/5 translate-y-full group-hover:translate-y-0 transition-transform"></div>
-                  <LogIn className="w-5 h-5 text-white/50 relative" />
-                  <span className="font-black uppercase tracking-widest text-xs relative">Sign in with Google</span>
-                </button>
-              ) : (
-                <div className="flex items-center justify-between bg-white/[0.02] border border-white/5 p-4 rounded-xl">
-                  <div className="flex items-center gap-3">
-                    <img src={user.photoURL || ''} className="w-8 h-8 rounded-full" alt="" />
-                    <span className="font-bold text-sm tracking-tight">{user.displayName}</span>
-                  </div>
-                  <button onClick={handleLogout} className="text-white/30 hover:text-[#ff2e63] transition-colors">
-                    <LogOut className="w-4 h-4" />
-                  </button>
-                </div>
-              )}
-
-              <div className="space-y-1 border-l-2 border-white/10 pl-4 hover:border-[#ff2e63] transition-colors text-left">
-                <label className="text-[10px] font-black text-white/30 uppercase tracking-[0.2em]">Your Name</label>
-                <input
-                  type="text"
-                  value={playerName}
-                  onChange={(e) => setPlayerName(e.target.value)}
-                  placeholder="Enter your name..."
-                  className="w-full bg-transparent border-none text-2xl font-bold p-0 outline-none placeholder:text-white/10"
-                />
-              </div>
-
-              <div className="space-y-1 border-l-2 border-white/10 pl-4 hover:border-[#ff2e63] transition-colors">
-                <div className="flex justify-between items-center pr-2">
-                  <label className="text-[10px] font-black text-white/30 uppercase tracking-[0.2em]">Room Key</label>
-                  <button 
-                    type="button" 
-                    onClick={handleRandomKey}
-                    className="text-[9px] uppercase font-black text-[#ff2e63] hover:text-white transition-colors"
-                  >
-                    Generate Random
-                  </button>
-                </div>
-                <input
-                  type="text"
-                  value={roomId}
-                  onChange={(e) => setRoomId(e.target.value)}
-                  placeholder="Enter key..."
-                  className="w-full bg-transparent border-none text-2xl font-bold p-0 outline-none placeholder:text-white/10"
-                  required
-                />
-              </div>
-
-              <AvatarCustomizer 
-                currentIcon={avatar.icon} 
-                currentColor={avatar.color} 
-                onSelect={(icon, color) => setAvatar({ icon, color })}
-              />
-            </div>
-
-            <div className="flex gap-4">
-              <button
-                type="submit"
-                disabled={isJoining}
-                className="flex-1 px-10 py-4 bg-[#ff2e63] font-black uppercase tracking-widest text-sm hover:skew-x-[-3deg] transition-transform active:scale-95 disabled:opacity-50"
-              >
-                {isJoining ? 'Connecting...' : 'Join Game'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowRoomBrowser(true)}
-                className="px-6 py-4 border-2 border-[#ff2e63]/30 text-[#ff2e63] font-black uppercase tracking-widest text-[10px] hover:bg-[#ff2e63]/10 transition-colors flex items-center gap-2 active:scale-95"
-              >
-                <Globe className="w-4 h-4" /> Browse Rooms
-              </button>
-            </div>
-            
-            {error && <p className="text-[#ff2e63] text-xs font-bold uppercase italic">{error}</p>}
-          </form>
-
-          <footer className="pt-8 sm:pt-12 border-t border-white/10 flex flex-wrap items-center gap-4 sm:gap-8">
-            <button onClick={() => setShowLeaderboard(true)} className="text-[10px] uppercase tracking-widest font-black text-white/30 hover:text-[#f5d300] transition-colors flex items-center gap-2">
-              <Trophy className="w-3 h-3" /> Rankings
-            </button>
-            <button onClick={() => setShowReplays(true)} className="text-[10px] uppercase tracking-widest font-black text-white/30 hover:text-[#ff2e63] transition-colors flex items-center gap-2">
-              <Film className="w-3 h-3" /> Archives
-            </button>
-            <button onClick={handleBuyPremium} className="text-[10px] uppercase tracking-widest font-black text-white/30 hover:text-white transition-colors">
-              Store
-            </button>
-            <div className="hidden sm:block flex-1 h-[2px] bg-white/5"></div>
-            <p className="text-[10px] text-white/20 font-mono italic w-full sm:w-auto">#SESSION_INIT_001</p>
-          </footer>
-        </motion.div>
-
-        <AnimatePresence>
-          {showLeaderboard && <Leaderboard onClose={() => setShowLeaderboard(false)} />}
-          {showRoomBrowser && (
-            <RoomBrowser 
-              onJoin={(id) => {
-                setRoomId(id);
-                setShowRoomBrowser(false);
-                // Trigger join automatically
-                socket.emit('join_game', { 
-                  roomId: id, 
-                  playerName: user?.displayName || playerName, 
-                  isSpectator: false, 
-                  userId: user?.uid,
-                  avatar: avatar
-                });
-              }} 
-              onClose={() => setShowRoomBrowser(false)} 
-            />
-          )}
-          {showReplays && (
-            <ReplayLibrary 
-              onSelect={(replay) => {
-                setSelectedReplay(replay);
-                setShowReplays(false);
-              }} 
-              onClose={() => setShowReplays(false)} 
-            />
-          )}
-          {selectedReplay && (
-            <ReplayPlayer 
-              replay={selectedReplay} 
-              onClose={() => setSelectedReplay(null)} 
-            />
-          )}
-        </AnimatePresence>
+      <div className="min-h-screen bg-[#050505] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 rounded-full border-4 border-[#ff2e63]/20 border-t-[#ff2e63] animate-spin" />
+          <p className="text-[10px] uppercase font-black tracking-[0.4em] text-white/20">Syncing Nexus...</p>
+        </div>
       </div>
     );
   }
 
-  const myPlayer = gameState.players.find(p => p.id === socket.id);
-  const currentPlayer = gameState.players[gameState.currentTurnIndex];
-  const turnColor = currentPlayer?.avatar?.color || COLOR_MAP[currentPlayer?.color as keyof typeof COLOR_MAP] || '#ff2e63';
-
   return (
-    <div 
-      className="min-h-screen transition-colors duration-1000 flex flex-col p-4 sm:p-10 font-sans overflow-x-hidden relative"
-      style={{ backgroundColor: gameState ? (gameState.status === 'playing' ? `${turnColor}05` : '#050505') : '#050505' }}
-      onClick={() => audioController.startMusic()}
-    >
-      {/* Background Glow */}
-      <AnimatePresence>
-        {gameState.status === 'playing' && (
-          <motion.div
-            key={currentPlayer?.id}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 0.15 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 pointer-events-none z-0"
-            style={{ 
-              background: `radial-gradient(circle at 50% 50%, ${turnColor}, transparent 70%)` 
-            }}
-          />
-        )}
-      </AnimatePresence>
+    <AnimatePresence mode="wait">
+      {!gameState ? (
+        <motion.div 
+          key="join-screen"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="min-h-screen bg-[#050505] text-white flex flex-col items-center justify-center p-4 sm:p-10 font-sans overflow-x-hidden relative"
+        >
+          {/* Join Screen Pulse */}
+          <div className="absolute inset-0 overflow-hidden pointer-events-none">
+            <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-[#ff2e63]/5 blur-[120px] rounded-full animate-pulse" />
+            <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-[#ff2e63]/5 blur-[120px] rounded-full animate-pulse delay-1000" />
+          </div>
 
-      <header className="flex flex-col lg:flex-row justify-between items-start gap-8 lg:gap-0 mb-8 sm:mb-12 relative z-10">
-        <div className="w-full lg:w-auto">
-          <h1 className="text-5xl sm:text-7xl font-black tracking-tighter leading-none italic uppercase skew-x-[-6deg] underline decoration-[#ff2e63] decoration-[4px] sm:decoration-8">
-            Chain<br/>Reaction
-          </h1>
-          <div className="mt-4 flex flex-wrap items-center gap-4 sm:gap-6">
-            <div className="flex items-center gap-3">
-              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-              <span className="text-[9px] sm:text-[10px] uppercase tracking-[0.2em] sm:tracking-[0.3em] font-medium text-white/40">Cloud Server: Asia (Live)</span>
-            </div>
-            {gameState.spectatorCount > 0 && (
-              <div className="flex items-center gap-2">
-                <Users className="w-3 h-3 text-[#ff2e63]" />
-                <span className="text-[9px] sm:text-[10px] uppercase tracking-[0.2em] font-black text-[#ff2e63]">{gameState.spectatorCount}</span>
-              </div>
-            )}
-            <button 
-               onClick={handleExitGame}
-               className="text-[9px] sm:text-[10px] uppercase tracking-widest font-black text-white/20 hover:text-[#ff2e63] flex items-center gap-2 transition-colors border border-white/5 px-3 py-1 rounded"
-            >
-              Exit
-            </button>
-          </div>
-        </div>
-        <div className="flex flex-col items-end w-full lg:w-auto gap-4">
-          <div className="flex items-center justify-between lg:justify-end w-full lg:w-auto gap-4">
-            <button 
-              onClick={() => setShowChat(!showChat)}
-              className={cn(
-                "p-2 border transition-all flex items-center gap-2 px-3 flex-1 lg:flex-none justify-center lg:justify-start",
-                showChat ? "bg-white text-black border-white" : "border-white/10 text-white/40 hover:bg-white/5"
-              )}
-            >
-              <MessageSquare className="w-4 h-4" />
-              <span className="text-[10px] font-black uppercase">Chat</span>
-            </button>
-            <button 
-              onClick={() => setIsMuted(!isMuted)}
-              className="p-2 border border-white/10 hover:bg-white/5 transition-colors"
-              title={isMuted ? "Unmute" : "Mute"}
-            >
-              {isMuted ? <VolumeX className="w-4 h-4 text-white/30" /> : <Volume2 className="w-4 h-4 text-[#ff2e63]" />}
-            </button>
-            <div className="text-right border-r-2 border-[#ff2e63] pr-4 flex flex-col items-end">
-              <p className="text-[9px] uppercase tracking-[0.2em] text-white/50 mb-1 leading-none">Turn</p>
-              <p className="text-xl sm:text-3xl font-bold text-[#ff2e63] uppercase italic tracking-tighter truncate max-w-[150px] leading-none mb-1">
-                {gameState.status === 'playing' ? currentPlayer?.name : 'WAITING'}
-              </p>
-              <TurnTimer endTime={gameState.turnEndTime} status={gameState.status} />
-            </div>
-          </div>
-          <button 
-            onClick={handleBuyPremium}
-            className="w-full lg:w-auto px-6 py-2 border border-white/20 text-[10px] uppercase tracking-widest hover:bg-white hover:text-black transition-colors"
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="w-full max-w-md space-y-8 sm:space-y-12 text-left"
           >
-            {hasPremium ? 'Premium Active' : 'View Store'}
-          </button>
-          
-          <div className="flex items-center gap-3 w-full lg:w-auto">
-            {gameState.status === 'playing' && (
-              <div className="flex-1 lg:w-48 bg-white/5 h-2 rounded-full overflow-hidden relative">
-                <motion.div 
-                  initial={{ width: "100%" }}
-                  animate={{ width: "0%" }}
-                  key={gameState.currentTurnIndex + '-' + gameState.turnEndTime}
-                  transition={{ duration: (gameState.turnEndTime! - Date.now()) / 1000, ease: "linear" }}
-                  className="absolute inset-y-0 left-0 bg-[#ff2e63]"
-                />
+            <header className="mb-8 sm:mb-12">
+              <h1 className="text-6xl sm:text-8xl font-black italic tracking-tighter leading-[0.8] uppercase skew-x-[-6deg] underline decoration-[#ff2e63] decoration-8">
+                Chain<br/>Reaction
+              </h1>
+              <div className="mt-6 flex items-center gap-3">
+                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                <span className="text-[10px] uppercase tracking-[0.3em] font-medium text-white/40">v.2.4.0 Ready for Deployment</span>
               </div>
-            )}
-            
-            {gameState.status === 'playing' && myPlayer?.isHost && (
-               <button
-                onClick={() => socket.emit('skip_turn', gameState.id)}
-                className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white/60 text-[10px] font-black uppercase tracking-widest transition-all h-[32px] flex items-center justify-center"
-                title="Force skip turn if someone is stuck"
-              >
-                Skip
+            </header>
+
+            <form onSubmit={handleJoin} className="space-y-8">
+              {!user ? (
+                <div className="space-y-8">
+                  <div className="p-8 bg-white/[0.02] border border-white/10 rounded-3xl text-center space-y-6">
+                    <div className="w-16 h-16 bg-[#ff2e63]/20 rounded-2xl flex items-center justify-center mx-auto border border-[#ff2e63]/30">
+                      <ShieldCheck className="w-10 h-10 text-[#ff2e63]" />
+                    </div>
+                    <div className="space-y-2">
+                      <h2 className="text-xl font-black uppercase italic tracking-tighter text-white">Identity Required</h2>
+                      <p className="text-[10px] text-white/40 uppercase tracking-widest font-bold leading-relaxed">
+                        All pilots must authenticate via Secure Google Protocol to access the Hyper Nexus.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleLogin}
+                      className="w-full flex items-center justify-center gap-4 py-5 bg-white text-black rounded-2xl hover:bg-gray-200 transition-all font-black uppercase tracking-widest text-sm relative overflow-hidden"
+                    >
+                      <LogIn className="w-5 h-5" />
+                      Connect via Google
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-8">
+                  <div className="space-y-6">
+                    <div className="flex items-center justify-between bg-white/[0.02] border border-white/5 p-4 rounded-xl">
+                      <div className="flex items-center gap-3">
+                        <img src={user.photoURL || ''} className="w-8 h-8 rounded-full border border-[#ff2e63]/30" alt="" />
+                        <div>
+                          <span className="block font-black uppercase italic text-xs tracking-tighter text-white">Pilot Profile</span>
+                          <span className="block font-bold text-sm tracking-tight text-white/70">{user.displayName}</span>
+                        </div>
+                      </div>
+                      <button onClick={handleLogout} className="p-2 bg-white/5 hover:bg-red-500/20 rounded-lg group transition-colors">
+                        <LogOut className="w-4 h-4 text-white/30 group-hover:text-red-500" />
+                      </button>
+                    </div>
+
+                    <div className="space-y-1 border-l-2 border-white/10 pl-4 hover:border-[#ff2e63] transition-colors">
+                      <div className="flex justify-between items-center pr-2">
+                        <label className="text-[10px] font-black text-white/30 uppercase tracking-[0.2em]">Room Key</label>
+                        <button 
+                          type="button" 
+                          onClick={handleRandomKey}
+                          className="text-[9px] uppercase font-black text-[#ff2e63] hover:text-white transition-colors"
+                        >
+                          Generate Random
+                        </button>
+                      </div>
+                      <input
+                        type="text"
+                        value={roomId}
+                        onChange={(e) => setRoomId(e.target.value)}
+                        placeholder="Enter key..."
+                        className="w-full bg-transparent border-none text-2xl font-bold p-0 outline-none placeholder:text-white/10"
+                        required
+                      />
+                    </div>
+
+                    <AvatarCustomizer 
+                      currentIcon={avatar.icon} 
+                      currentColor={avatar.color} 
+                      onSelect={(icon, color) => setAvatar({ icon, color })}
+                    />
+                  </div>
+
+                  <div className="flex gap-4">
+                    <button
+                      type="submit"
+                      disabled={isJoining}
+                      className="flex-1 px-10 py-5 bg-[#ff2e63] font-black uppercase tracking-widest text-sm hover:skew-x-[-3deg] transition-transform active:scale-95 disabled:opacity-50 shadow-[0_10px_30px_rgba(255,46,99,0.3)]"
+                    >
+                      {isJoining ? 'Connecting...' : 'Initialize Link'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowRoomBrowser(true)}
+                      className="px-6 py-5 border-2 border-white/10 text-white font-black uppercase tracking-widest text-[10px] hover:bg-white hover:text-black transition-all flex items-center gap-2 active:scale-95"
+                    >
+                      <Globe className="w-4 h-4" /> Browse
+                    </button>
+                  </div>
+                </div>
+              )}
+              
+              {error && <p className="text-[#ff2e63] text-xs font-bold uppercase italic">{error}</p>}
+            </form>
+
+            <footer className="pt-8 sm:pt-12 border-t border-white/10 flex flex-wrap items-center gap-4 sm:gap-8">
+              <button onClick={() => setShowLeaderboard(true)} className="text-[10px] uppercase tracking-widest font-black text-white/30 hover:text-[#f5d300] transition-colors flex items-center gap-2">
+                <Trophy className="w-3 h-3" /> Rankings
               </button>
-            )}
-          </div>
-        </div>
-      </header>
+              <button onClick={() => setShowReplays(true)} className="text-[10px] uppercase tracking-widest font-black text-white/30 hover:text-[#ff2e63] transition-colors flex items-center gap-2">
+                <Film className="w-3 h-3" /> Archives
+              </button>
+              <button onClick={handleBuyPremium} className="text-[10px] uppercase tracking-widest font-black text-white/30 hover:text-white transition-colors">
+                Store
+              </button>
+              <div className="hidden sm:block flex-1 h-[2px] bg-white/5"></div>
+              <p className="text-[10px] text-white/20 font-mono italic w-full sm:w-auto">#SESSION_INIT_001</p>
+            </footer>
+          </motion.div>
 
-      <main className="flex-1 flex flex-col lg:flex-row gap-8 lg:gap-12 min-h-0">
-        {/* Main Board Area */}
-        <div className="flex-1 flex items-center justify-center min-h-0">
-            {gameState.status === 'lobby' ? (
-              <LobbyView 
-                gameState={gameState} 
-                myPlayer={myPlayer} 
-                handleToggleReady={handleToggleReady}
-                handleStartGame={handleStartGame}
-                handleUpdateSettings={handleUpdateSettings}
-                showSettings={showSettings}
-                setShowSettings={setShowSettings}
+          <AnimatePresence>
+            {showLeaderboard && <Leaderboard onClose={() => setShowLeaderboard(false)} />}
+            {showRoomBrowser && (
+              <RoomBrowser 
+                onJoin={(id) => {
+                  setRoomId(id);
+                  setShowRoomBrowser(false);
+                  socket.emit('join_game', { 
+                    roomId: id, 
+                    playerName: user?.displayName || playerName, 
+                    isSpectator: false, 
+                    userId: user?.uid,
+                    avatar: avatar
+                  });
+                }} 
+                onClose={() => setShowRoomBrowser(false)} 
               />
-            ) : (
-              <GameView 
-                gameState={gameState} 
-                myPlayer={myPlayer} 
-                setShowDetailedStats={setShowDetailedStats}
+            )}
+            {showReplays && (
+              <ReplayLibrary 
+                onSelect={(replay) => {
+                  setSelectedReplay(replay);
+                  setShowReplays(false);
+                }} 
+                onClose={() => setShowReplays(false)} 
               />
             )}
-        </div>
-
-        {/* Sidebar */}
-        <aside className={cn(
-          "w-full lg:w-72 flex flex-col gap-8 shrink-0 pb-8 lg:pb-0",
-          !showChat && "lg:flex hidden"
-        )}>
-          <AnimatePresence mode="wait">
-            {showChat ? (
-              <motion.div 
-                key="chat"
-                initial={{ x: 20, opacity: 0 }}
-                animate={{ x: 0, opacity: 1 }}
-                exit={{ x: 20, opacity: 0 }}
-                className="flex-1 min-h-[400px] lg:min-h-0"
-              >
-                <ChatPanel 
-                  roomId={gameState.id} 
-                  user={user} 
-                  avatar={avatar} 
-                  onClose={() => setShowChat(false)} 
-                />
-              </motion.div>
-            ) : (
-              <motion.div 
-                key="default"
-                initial={{ x: -20, opacity: 0 }}
-                animate={{ x: 0, opacity: 1 }}
-                exit={{ x: -20, opacity: 0 }}
-                className="flex flex-col gap-8 h-full"
-              >
-                <div className="p-4 sm:p-6 bg-[#111] border border-white/10 rounded-xl lg:rounded-none">
-                  <h3 className="text-[11px] uppercase tracking-widest text-white/40 mb-6">Players Lobby</h3>
-                  <ul className="space-y-4">
-                    {gameState.players.map((p) => (
-                      <li key={p.id} className={cn("flex items-center justify-between group", p.isEliminated && "opacity-30")}>
-                        <div className="flex items-center gap-3">
-                          <PlayerAvatar icon={p.avatar?.icon} color={p.avatar?.color || COLOR_MAP[p.color]} size="sm" />
-                          <span className={cn("text-sm font-bold tracking-tight", p.id === socket.id && "text-white")}>
-                             {p.name}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                           {p.isReady && gameState.status === 'lobby' && (
-                             <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></div>
-                           )}
-                           <span className="text-[10px] font-mono font-black text-white/20">#{p.id.slice(0, 3).toUpperCase()}</span>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                <div className="relative flex-1 p-4 sm:p-6 border-2 border-dashed border-white/10 overflow-hidden min-h-[200px] sm:min-h-[250px] rounded-xl lg:rounded-none">
-                   <div className="absolute inset-0 bg-gradient-to-br from-[#ff2e63]/20 to-transparent"></div>
-                   <div className="relative h-full flex flex-col">
-                     <p className="text-[10px] uppercase font-bold tracking-tighter text-[#ff2e63] mb-2">Limited Offer</p>
-                     <h4 className="text-xl font-bold italic mb-4 uppercase leading-none">Neon Vortex Skin Pack</h4>
-                     <p className="text-[11px] text-white/60 mb-6 leading-relaxed">Unlock exclusive high-intensity particle effects for all your explosions.</p>
-                     <div className="mt-auto">
-                       <button 
-                        onClick={handleBuyPremium}
-                        className="w-full py-3 bg-[#ff2e63] text-white text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-transform"
-                       >
-                         {hasPremium ? 'Owned' : 'Unlock Now $4.99'}
-                       </button>
-                     </div>
-                   </div>
-                </div>
-              </motion.div>
+            {selectedReplay && (
+              <ReplayPlayer 
+                replay={selectedReplay} 
+                onClose={() => setSelectedReplay(null)} 
+              />
             )}
           </AnimatePresence>
-        </aside>
-      </main>
+        </motion.div>
+      ) : (
+        <motion.div 
+          key="game-container"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="min-h-screen transition-colors duration-1000 flex flex-col p-4 sm:p-10 font-sans overflow-x-hidden relative"
+          style={{ backgroundColor: gameState.status === 'playing' ? `${turnColor}05` : '#050505' }}
+          onClick={() => audioController.startMusic()}
+        >
+          {/* Background Glow */}
+          <AnimatePresence>
+            {gameState.status === 'playing' && (
+              <motion.div
+                key={currentPlayer?.id}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 0.15 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 pointer-events-none z-0"
+                style={{ 
+                  background: `radial-gradient(circle at 50% 50%, ${turnColor}, transparent 70%)` 
+                }}
+              />
+            )}
+          </AnimatePresence>
 
-      <footer className="mt-8 sm:mt-10 flex flex-wrap justify-between items-end gap-6 border-t border-white/10 pt-8">
-        <div className="flex flex-wrap gap-8 sm:gap-12 text-[10px] uppercase tracking-widest text-white/40">
-          <div className="flex flex-col gap-1 sm:gap-1"><span className="text-white/20">Ping</span><span className="text-white">24ms</span></div>
-          <div className="flex flex-col gap-1 sm:gap-1"><span className="text-white/20">Session</span><span className="text-white font-mono uppercase">#{gameState.id.slice(0, 5)}</span></div>
-          <div className="flex flex-col gap-1 sm:gap-1"><span className="text-white/20">Status</span><span className="text-white text-[#f5d300] uppercase italic font-bold">{gameState.status}</span></div>
-        </div>
-        <p className="text-[9px] uppercase tracking-tighter text-white/20 italic order-first sm:order-last w-full sm:w-auto">Atomic Engine v.2.4.0-cloud-stable</p>
-      </footer>
+          <header className="flex flex-col lg:flex-row justify-between items-start gap-8 lg:gap-0 mb-8 sm:mb-12 relative z-10">
+            <div className="w-full lg:w-auto">
+              <h1 className="text-5xl sm:text-7xl font-black tracking-tighter leading-none italic uppercase skew-x-[-6deg] underline decoration-[#ff2e63] decoration-[4px] sm:decoration-8">
+                Chain<br/>Reaction
+              </h1>
+              <div className="mt-4 flex flex-wrap items-center gap-4 sm:gap-6">
+                <div className="flex items-center gap-3">
+                  <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                  <span className="text-[9px] sm:text-[10px] uppercase tracking-[0.2em] sm:tracking-[0.3em] font-medium text-white/40">Cloud Server: Asia (Live)</span>
+                </div>
+                {gameState.spectatorCount > 0 && (
+                  <div className="flex items-center gap-2">
+                    <Users className="w-3 h-3 text-[#ff2e63]" />
+                    <span className="text-[9px] sm:text-[10px] uppercase tracking-[0.2em] font-black text-[#ff2e63]">{gameState.spectatorCount}</span>
+                  </div>
+                )}
+                <button 
+                  onClick={handleExitGame}
+                  className="text-[9px] sm:text-[10px] uppercase tracking-widest font-black text-white/20 hover:text-[#ff2e63] flex items-center gap-2 transition-colors border border-white/5 px-3 py-1 rounded"
+                >
+                  Exit
+                </button>
+              </div>
+            </div>
+            <div className="flex flex-col items-end w-full lg:w-auto gap-4">
+              <div className="flex items-center justify-between lg:justify-end w-full lg:w-auto gap-4">
+                <button 
+                  onClick={() => setShowChat(!showChat)}
+                  className={cn(
+                    "p-2 border transition-all flex items-center gap-2 px-3 flex-1 lg:flex-none justify-center lg:justify-start",
+                    showChat ? "bg-white text-black border-white" : "border-white/10 text-white/40 hover:bg-white/5"
+                  )}
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  <span className="text-[10px] font-black uppercase">Chat</span>
+                </button>
+                <button 
+                  onClick={() => setIsMuted(!isMuted)}
+                  className="p-2 border border-white/10 hover:bg-white/5 transition-colors"
+                  title={isMuted ? "Unmute" : "Mute"}
+                >
+                  {isMuted ? <VolumeX className="w-4 h-4 text-white/30" /> : <Volume2 className="w-4 h-4 text-[#ff2e63]" />}
+                </button>
+                {user && accessToken && (
+                  <button 
+                    onClick={() => setShowGmail(true)}
+                    className="p-2 border border-white/10 hover:bg-white/5 transition-colors relative"
+                    title="Gmail Nexus"
+                  >
+                    <Mail className="w-4 h-4 text-red-500" />
+                    <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                  </button>
+                )}
+                <div className="text-right border-r-2 border-[#ff2e63] pr-4 flex flex-col items-end">
+                  <p className="text-[9px] uppercase tracking-[0.2em] text-white/50 mb-1 leading-none">Turn</p>
+                  <p className="text-xl sm:text-3xl font-bold text-[#ff2e63] uppercase italic tracking-tighter truncate max-w-[150px] leading-none mb-1">
+                    {gameState.status === 'playing' ? currentPlayer?.name : 'WAITING'}
+                  </p>
+                  <TurnTimer endTime={gameState.turnEndTime} status={gameState.status} />
+                </div>
+              </div>
+              <button 
+                onClick={handleBuyPremium}
+                className="w-full lg:w-auto px-6 py-2 border border-white/20 text-[10px] uppercase tracking-widest hover:bg-white hover:text-black transition-colors"
+              >
+                {hasPremium ? 'Premium Active' : 'View Store'}
+              </button>
+              
+              <div className="flex items-center gap-3 w-full lg:w-auto">
+                {gameState.status === 'playing' && (
+                  <div className="flex-1 lg:w-48 bg-white/5 h-2 rounded-full overflow-hidden relative">
+                    <motion.div 
+                      initial={{ width: "100%" }}
+                      animate={{ width: "0%" }}
+                      key={gameState.currentTurnIndex + '-' + gameState.turnEndTime}
+                      transition={{ duration: (gameState.turnEndTime! - Date.now()) / 1000, ease: "linear" }}
+                      className="absolute inset-y-0 left-0 bg-[#ff2e63]"
+                    />
+                  </div>
+                )}
+                
+                {gameState.status === 'playing' && myPlayer?.isHost && (
+                  <button
+                    onClick={() => socket.emit('skip_turn', gameState.id)}
+                    className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white/60 text-[10px] font-black uppercase tracking-widest transition-all h-[32px] flex items-center justify-center"
+                    title="Force skip turn if someone is stuck"
+                  >
+                    Skip
+                  </button>
+                )}
+              </div>
+            </div>
+          </header>
 
-      <AnimatePresence>
-        {showLeaderboard && (
-          <Leaderboard onClose={() => setShowLeaderboard(false)} />
-        )}
-        {showReplays && (
-          <ReplayLibrary 
-            onSelect={(replay) => {
-              setSelectedReplay(replay);
-              setShowReplays(false);
-            }} 
-            onClose={() => setShowReplays(false)} 
-          />
-        )}
-        {selectedReplay && (
-          <ReplayPlayer 
-            replay={selectedReplay} 
-            onClose={() => setSelectedReplay(null)} 
-          />
-        )}
-        {showDetailedStats && (
-          <DetailedStatsModal 
-            players={gameState.players} 
-            winnerId={gameState.winnerId} 
-            onClose={() => setShowDetailedStats(false)} 
-          />
-        )}
-        {showAd && (
-          <AdOverlay onComplete={onAdComplete} onClose={() => setShowAd(false)} />
-        )}
-        <UndoControl 
-          myPlayer={myPlayer} 
-          gameState={gameState} 
-          onWatchAd={handleWatchAd} 
-          onUndo={handleUndo} 
-        />
-      </AnimatePresence>
-    </div>
+          <main className="flex-1 flex flex-col lg:flex-row gap-8 lg:gap-12 min-h-0">
+            {/* Main Board Area */}
+            <div className="flex-1 flex items-center justify-center min-h-0">
+                {gameState.status === 'lobby' ? (
+                  <LobbyView 
+                    gameState={gameState} 
+                    myPlayer={myPlayer} 
+                    handleToggleReady={handleToggleReady}
+                    handleStartGame={handleStartGame}
+                    handleUpdateSettings={handleUpdateSettings}
+                    showSettings={showSettings}
+                    setShowSettings={setShowSettings}
+                  />
+                ) : (
+                  <GameView 
+                    gameState={gameState} 
+                    myPlayer={myPlayer} 
+                    setShowDetailedStats={setShowDetailedStats}
+                    onExit={handleExitGame}
+                  />
+                )}
+            </div>
+
+            {/* Sidebar */}
+            <aside className={cn(
+              "w-full lg:w-72 flex flex-col gap-8 shrink-0 pb-8 lg:pb-0",
+              !showChat && "lg:flex hidden"
+            )}>
+              <AnimatePresence mode="wait">
+                {showChat ? (
+                  <motion.div 
+                    key="chat"
+                    initial={{ x: 20, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    exit={{ x: 20, opacity: 0 }}
+                    className="flex-1 min-h-[400px] lg:min-h-0"
+                  >
+                    <ChatPanel 
+                      roomId={gameState.id} 
+                      user={user} 
+                      avatar={avatar} 
+                      onClose={() => setShowChat(false)} 
+                    />
+                  </motion.div>
+                ) : (
+                  <motion.div 
+                    key="default"
+                    initial={{ x: -20, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    exit={{ x: -20, opacity: 0 }}
+                    className="flex flex-col gap-8 h-full"
+                  >
+                    <div className="p-4 sm:p-6 bg-[#111] border border-white/10 rounded-xl lg:rounded-none">
+                      <h3 className="text-[11px] uppercase tracking-widest text-white/40 mb-6">Players Lobby</h3>
+                      <ul className="space-y-4">
+                        {gameState.players.map((p) => (
+                          <li key={p.id} className={cn("flex items-center justify-between group", p.isEliminated && "opacity-30")}>
+                            <div className="flex items-center gap-3">
+                              <PlayerAvatar icon={p.avatar?.icon} color={p.avatar?.color || COLOR_MAP[p.color]} size="sm" />
+                              <span className={cn("text-sm font-bold tracking-tight", p.id === socket.id && "text-white")}>
+                                {p.name}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {p.isReady && gameState.status === 'lobby' && (
+                                <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></div>
+                              )}
+                              <span className="text-[10px] font-mono font-black text-white/20">#{p.id.slice(0, 3).toUpperCase()}</span>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <div className="relative flex-1 p-4 sm:p-6 border-2 border-dashed border-white/10 overflow-hidden min-h-[200px] sm:min-h-[250px] rounded-xl lg:rounded-none">
+                      <div className="absolute inset-0 bg-gradient-to-br from-[#ff2e63]/20 to-transparent"></div>
+                      <div className="relative h-full flex flex-col">
+                        <p className="text-[10px] uppercase font-bold tracking-tighter text-[#ff2e63] mb-2">Limited Offer</p>
+                        <h4 className="text-xl font-bold italic mb-4 uppercase leading-none">Neon Vortex Skin Pack</h4>
+                        <p className="text-[11px] text-white/60 mb-6 leading-relaxed">Unlock exclusive high-intensity particle effects for all your explosions.</p>
+                        <div className="mt-auto">
+                          <button 
+                            onClick={handleBuyPremium}
+                            className="w-full py-3 bg-[#ff2e63] text-white text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-transform"
+                          >
+                            {hasPremium ? 'Owned' : 'Unlock Now $4.99'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-1 bg-gradient-to-r from-yellow-500/50 via-white/20 to-yellow-500/50 rounded-xl">
+                      <button 
+                        onClick={() => setShowTournament(true)}
+                        className="w-full p-4 bg-black rounded-[0.65rem] hover:bg-white/5 transition-all group relative overflow-hidden flex items-center gap-4"
+                      >
+                        <div className="p-2 bg-yellow-500/20 rounded-lg shrink-0">
+                          <Trophy className="w-5 h-5 text-yellow-500" />
+                        </div>
+                        <div className="text-left">
+                          <h4 className="text-sm font-black uppercase italic tracking-tighter text-white">Hyper Nexus</h4>
+                          <div className="flex items-center gap-2">
+                            <p className="text-[9px] font-bold uppercase tracking-widest text-[#ff2e63] animate-pulse">Coming Soon</p>
+                            <span className="text-[9px] font-bold uppercase tracking-widest text-white/20 line-through">$50,000 USDT</span>
+                          </div>
+                        </div>
+                        <ChevronRight className="w-4 h-4 ml-auto text-white/20 group-hover:text-white transition-colors" />
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </aside>
+          </main>
+
+          <footer className="mt-8 sm:mt-10 flex flex-wrap justify-between items-end gap-6 border-t border-white/10 pt-8">
+            <div className="flex flex-wrap gap-8 sm:gap-12 text-[10px] uppercase tracking-widest text-white/40">
+              <div className="flex flex-col gap-1 sm:gap-1"><span className="text-white/20">Ping</span><span className="text-white">24ms</span></div>
+              <div className="flex flex-col gap-1 sm:gap-1"><span className="text-white/20">Session</span><span className="text-white font-mono uppercase">#{gameState.id.slice(0, 5)}</span></div>
+              <div className="flex flex-col gap-1 sm:gap-1"><span className="text-white/20">Status</span><span className="text-white text-[#f5d300] uppercase italic font-bold">{gameState.status}</span></div>
+            </div>
+            <p className="text-[9px] uppercase tracking-tighter text-white/20 italic order-first sm:order-last w-full sm:w-auto">Atomic Engine v.2.4.0-cloud-stable</p>
+          </footer>
+
+          <AnimatePresence>
+            {showLeaderboard && (
+              <Leaderboard onClose={() => setShowLeaderboard(false)} />
+            )}
+            {showReplays && (
+              <ReplayLibrary 
+                onSelect={(replay) => {
+                  setSelectedReplay(replay);
+                  setShowReplays(false);
+                }} 
+                onClose={() => setShowReplays(false)} 
+              />
+            )}
+            {selectedReplay && (
+              <ReplayPlayer 
+                replay={selectedReplay} 
+                onClose={() => setSelectedReplay(null)} 
+              />
+            )}
+            {showDetailedStats && (
+              <DetailedStatsModal 
+                players={gameState.players} 
+                winnerId={gameState.winnerId} 
+                onClose={() => setShowDetailedStats(false)} 
+              />
+            )}
+            {showAd && (
+              <AdOverlay onComplete={onAdComplete} onClose={() => setShowAd(false)} />
+            )}
+            <UndoControl 
+              myPlayer={myPlayer} 
+              gameState={gameState} 
+              onWatchAd={handleWatchAd} 
+              onUndo={handleUndo} 
+            />
+            {showGmail && accessToken && (
+              <GmailPanel 
+                accessToken={accessToken} 
+                onClose={() => setShowGmail(false)} 
+                roomId={gameState?.id}
+              />
+            )}
+            {showTournament && (
+              <TournamentPanel 
+                user={user} 
+                avatar={avatar}
+                onClose={() => setShowTournament(false)} 
+              />
+            )}
+          </AnimatePresence>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
-
 
 function LobbyView({ gameState, myPlayer, handleToggleReady, handleStartGame, handleUpdateSettings, showSettings, setShowSettings }: any) {
   const allReady = gameState.players.length >= 2 && gameState.players.every((p: Player) => p.isReady);
@@ -923,7 +1023,7 @@ function LobbyView({ gameState, myPlayer, handleToggleReady, handleStartGame, ha
   );
 }
 
-function GameView({ gameState, myPlayer, setShowDetailedStats }: any) {
+function GameView({ gameState, myPlayer, setShowDetailedStats, onExit }: any) {
   const isMyTurn = gameState.players[gameState.currentTurnIndex]?.id === socket.id;
   const [explosions, setExplosions] = useState<{ id: number; x: number; y: number; color: string }[]>([]);
   const [shake, setShake] = useState(false);
@@ -939,7 +1039,8 @@ function GameView({ gameState, myPlayer, setShowDetailedStats }: any) {
       
       gameState.lastExplosions.forEach((exp: any, index: number) => {
         setTimeout(() => {
-          const explosionId = Date.now() + Math.random();
+          // Unique ID using combination of timestamp, move index, and random string
+          const explosionId = `${Date.now()}-${gameState.lastMoveTimestamp}-${index}-${Math.random().toString(36).substr(2, 5)}`;
           setExplosions(prev => {
             // Cap simultaneous explosions to prevent massive performance drops on weak devices
             if (prev.length > 30) return [...prev.slice(1), { ...exp, id: explosionId }];
@@ -1056,7 +1157,11 @@ function GameView({ gameState, myPlayer, setShowDetailedStats }: any) {
             <div className="absolute inset-0 bg-gradient-to-br from-[#ff2e63]/5 to-transparent pointer-events-none" />
             
             {/* Celebration Effect */}
-            <AtomicBurst color={gameState.players.find((p: Player) => p.id === gameState.winnerId)?.avatar?.color || COLOR_MAP[gameState.players.find((p: Player) => p.id === gameState.winnerId)?.color as keyof typeof COLOR_MAP] || '#f5d300'} />
+            {(() => {
+              const winner = gameState.players.find((p: Player) => p.id === gameState.winnerId);
+              const winnerColor = winner?.avatar?.color || (winner ? COLOR_MAP[winner.color as keyof typeof COLOR_MAP] : '#f5d300') || '#f5d300';
+              return <AtomicBurst color={winnerColor} />;
+            })()}
             
             <div className="relative z-10">
               <motion.div
@@ -1134,7 +1239,7 @@ function GameView({ gameState, myPlayer, setShowDetailedStats }: any) {
                   </button>
                 )}
                 <button 
-                  onClick={() => socket.emit('leave_game', gameState.id)} 
+                  onClick={onExit} 
                   className="w-full sm:w-auto px-8 py-4 bg-white/5 border border-white/10 text-white font-black uppercase tracking-widest text-[10px] hover:border-white/30 transition-colors flex items-center justify-center gap-3 active:scale-95"
                 >
                   <LogOut className="w-5 h-5" /> Exit

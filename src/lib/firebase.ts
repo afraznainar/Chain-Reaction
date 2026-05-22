@@ -7,11 +7,15 @@ const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
+googleProvider.addScope('https://www.googleapis.com/auth/gmail.readonly');
+googleProvider.addScope('https://www.googleapis.com/auth/gmail.send');
 
 export async function signInWithGoogle() {
   try {
     const result = await signInWithPopup(auth, googleProvider);
     const user = result.user;
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+    const accessToken = credential?.accessToken;
     
     // Create or update user profile
     const userRef = doc(db, 'users', user.uid);
@@ -30,7 +34,7 @@ export async function signInWithGoogle() {
       });
     }
     
-    return user;
+    return { user, accessToken };
   } catch (error) {
     console.error("Authentication error:", error);
     throw error;
@@ -86,4 +90,55 @@ export async function getReplay(id: string) {
   const docRef = doc(db, 'replays', id);
   const docSnap = await getDoc(docRef);
   return docSnap.exists() ? docSnap.data() : null;
+}
+
+// Tournament Logic
+export async function getTournamentParticipant(uid: string) {
+  const participantRef = doc(db, 'tournament_participants', uid);
+  const snap = await getDoc(participantRef);
+  return snap.exists() ? snap.data() : null;
+}
+
+export async function joinTournament(user: any, avatar: any, isSecondChance: boolean = false) {
+  const participantRef = doc(db, 'tournament_participants', user.uid);
+  const data = {
+    userId: user.uid,
+    username: user.displayName || 'Anonymous',
+    avatar: avatar || { icon: 'user', color: '#ffffff' },
+    score: 0,
+    status: 'active',
+    chancesUsed: isSecondChance ? 1 : 0,
+    joinedAt: new Date().toISOString()
+  };
+  await setDoc(participantRef, data);
+  return data;
+}
+
+export async function getTournamentLeaderboard() {
+  const q = query(
+    collection(db, 'tournament_participants'), 
+    orderBy('score', 'desc'), 
+    limit(100)
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map(doc => doc.data());
+}
+
+export async function updateTournamentScore(uid: string, points: number, isWin: boolean) {
+  const participantRef = doc(db, 'tournament_participants', uid);
+  const snap = await getDoc(participantRef);
+  if (!snap.exists()) return;
+
+  const data = snap.data();
+  if (data.status === 'eliminated') return;
+
+  if (isWin) {
+    await updateDoc(participantRef, {
+      score: increment(points)
+    });
+  } else {
+    await updateDoc(participantRef, {
+      status: 'eliminated'
+    });
+  }
 }
