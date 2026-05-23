@@ -73,7 +73,7 @@ function AdOverlay({ onComplete, onClose }: { onComplete: () => void, onClose: (
       <div className="text-center space-y-12 max-w-lg">
         <div className="space-y-4">
           <h2 className="text-4xl sm:text-6xl font-black italic uppercase tracking-tighter skew-x-[-6deg]">Unlock<br/><span className="text-[#ff2e63]">Undo Capability</span></h2>
-          <p className="text-sm text-white/40 font-medium">Watching this short briefing will synchronize your core for a temporal reversal.</p>
+          <p className="text-sm text-white/40 font-medium">Watching this short sponsor video will grant you an undo charge for this match.</p>
         </div>
 
         <div className="relative w-24 h-24 sm:w-32 sm:h-32 mx-auto">
@@ -101,7 +101,7 @@ function AdOverlay({ onComplete, onClose }: { onComplete: () => void, onClose: (
 
         <div className="flex items-center gap-4 py-3 px-6 bg-white/5 border border-white/10 rounded-full">
           <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-          <span className="text-[10px] uppercase font-black tracking-widest text-white/60">Core Sync in Progress...</span>
+          <span className="text-[10px] uppercase font-black tracking-widest text-white/60">Loading reward...</span>
         </div>
       </div>
 
@@ -132,7 +132,7 @@ function UndoControl({ myPlayer, onWatchAd, onUndo, gameState }: any) {
                className="px-8 py-4 bg-[#f5d300] text-black font-black uppercase tracking-[0.2em] italic skew-x-[-6deg] shadow-[0_0_50px_rgba(245,211,0,0.4)] flex items-center gap-3 hover:scale-110 active:scale-95 transition-all text-sm border-b-4 border-black/20"
              >
                <Zap className="w-6 h-6 fill-current animate-pulse" />
-               Temporal Reversal ({myPlayer.totalUndosUsed}/3)
+               Undo Last Move ({myPlayer.totalUndosUsed}/3)
              </motion.button>
            ) : myPlayer.totalUndosUsed < 3 ? (
              <motion.button
@@ -147,7 +147,7 @@ function UndoControl({ myPlayer, onWatchAd, onUndo, gameState }: any) {
                  <Film className="w-6 h-6 group-hover:rotate-12 transition-transform" />
                  <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full animate-ping" />
                </div>
-               Restore Timeline ({myPlayer.totalUndosUsed}/3)
+               Unlock 1 Undo ({myPlayer.totalUndosUsed}/3)
              </motion.button>
            ) : null}
          </AnimatePresence>
@@ -159,7 +159,7 @@ function UndoControl({ myPlayer, onWatchAd, onUndo, gameState }: any) {
              animate={{ opacity: 1 }}
              className="text-[9px] uppercase font-black tracking-widest text-white/20 italic"
            >
-             Watch short briefing to sync current timeline
+             Watch a short video to unlock an undo
            </motion.div>
          )}
        </div>
@@ -178,6 +178,13 @@ export default function App() {
   const [playerName, setPlayerName] = useState('');
   const [isJoining, setIsJoining] = useState(false);
   const [error, setError] = useState('');
+  const [isInitializingNewGame, setIsInitializingNewGame] = useState(false);
+  const isInitializingNewGameRef = React.useRef(false);
+
+  const setIsInitializingNewGameValue = (val: boolean) => {
+    setIsInitializingNewGame(val);
+    isInitializingNewGameRef.current = val;
+  };
   const [hasPremium, setHasPremium] = useState(false);
   const [isJoiningAsSpectator, setIsJoiningAsSpectator] = useState(false);
   const [user, setUser] = useState<FirebaseUser | null>(null);
@@ -242,6 +249,15 @@ export default function App() {
       setGameState(updatedGame);
       setIsJoining(false);
 
+      if (isInitializingNewGameRef.current && updatedGame.status === 'lobby') {
+        const isHost = updatedGame.players.find(p => p.id === socket.id)?.isHost;
+        const aiCount = updatedGame.players.filter(p => p.isAI).length;
+        if (isHost && aiCount === 0 && updatedGame.players.length === 1) {
+          socket.emit('add_ai', updatedGame.id);
+          setIsInitializingNewGameValue(false);
+        }
+      }
+
       // Report result if game over and we are a player
       if (updatedGame.status === 'gameover' && !hasReportedResult && user) {
         const myPlayerInGame = updatedGame.players.find(p => p.id === socket.id);
@@ -303,6 +319,24 @@ export default function App() {
       roomId, 
       playerName: user?.displayName || playerName, 
       isSpectator: spectate, 
+      userId: user?.uid,
+      avatar: avatar
+    });
+
+    if (user) {
+      updateAvatarPreference(user.uid, avatar).catch(console.error);
+    }
+  };
+
+  const handleNewGameVsAI = () => {
+    setIsJoining(true);
+    setIsInitializingNewGameValue(true);
+    const key = 'ROOM_' + Math.random().toString(36).substr(2, 6).toUpperCase();
+    setRoomId(key);
+    socket.emit('join_game', { 
+      roomId: key, 
+      playerName: user?.displayName || playerName, 
+      isSpectator: false, 
       userId: user?.uid,
       avatar: avatar
     });
@@ -409,7 +443,7 @@ export default function App() {
       <div className="min-h-screen bg-[#050505] flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <div className="w-12 h-12 rounded-full border-4 border-[#ff2e63]/20 border-t-[#ff2e63] animate-spin" />
-          <p className="text-[10px] uppercase font-black tracking-[0.4em] text-white/20">Syncing Nexus...</p>
+          <p className="text-[10px] uppercase font-black tracking-[0.4em] text-white/20">Loading Game Data...</p>
         </div>
       </div>
     );
@@ -442,7 +476,7 @@ export default function App() {
               </h1>
               <div className="mt-6 flex items-center gap-3">
                 <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-                <span className="text-[10px] uppercase tracking-[0.3em] font-medium text-white/40">v.2.4.0 Ready for Deployment</span>
+                <span className="text-[10px] uppercase tracking-[0.3em] font-medium text-white/40">Ready to Play</span>
               </div>
             </header>
 
@@ -454,9 +488,9 @@ export default function App() {
                       <ShieldCheck className="w-10 h-10 text-[#ff2e63]" />
                     </div>
                     <div className="space-y-2">
-                      <h2 className="text-xl font-black uppercase italic tracking-tighter text-white">Identity Required</h2>
+                      <h2 className="text-xl font-black uppercase italic tracking-tighter text-white">Sign In Required</h2>
                       <p className="text-[10px] text-white/40 uppercase tracking-widest font-bold leading-relaxed">
-                        All pilots must authenticate via Secure Google Protocol to access the Hyper Nexus.
+                        Please sign in with Google to save your scores, track progress, and join multiplayer lobbies.
                       </p>
                     </div>
                     <button
@@ -465,7 +499,7 @@ export default function App() {
                       className="w-full flex items-center justify-center gap-4 py-5 bg-white text-black rounded-2xl hover:bg-gray-200 transition-all font-black uppercase tracking-widest text-sm relative overflow-hidden"
                     >
                       <LogIn className="w-5 h-5" />
-                      Connect via Google
+                      Sign In with Google
                     </button>
                   </div>
                 </div>
@@ -476,13 +510,38 @@ export default function App() {
                       <div className="flex items-center gap-3">
                         <img src={user.photoURL || ''} className="w-8 h-8 rounded-full border border-[#ff2e63]/30" alt="" />
                         <div>
-                          <span className="block font-black uppercase italic text-xs tracking-tighter text-white">Pilot Profile</span>
+                          <span className="block font-black uppercase italic text-xs tracking-tighter text-white">Player Profile</span>
                           <span className="block font-bold text-sm tracking-tight text-white/70">{user.displayName}</span>
                         </div>
                       </div>
                       <button onClick={handleLogout} className="p-2 bg-white/5 hover:bg-red-500/20 rounded-lg group transition-colors">
                         <LogOut className="w-4 h-4 text-white/30 group-hover:text-red-500" />
                       </button>
+                    </div>
+
+                    {/* Quick Play Mode */}
+                    <div className="p-6 bg-gradient-to-br from-[#ff2e63]/10 to-transparent border border-[#ff2e63]/30 rounded-2xl space-y-4">
+                      <div>
+                        <h3 className="text-sm font-black uppercase italic tracking-wider text-white">Quick Play Mode</h3>
+                        <p className="text-[10px] text-white/50 uppercase tracking-widest font-bold mt-1">
+                          Play a game instantly against intelligent AI opponents.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleNewGameVsAI}
+                        disabled={isJoining}
+                        className="w-full py-4 bg-[#ff2e63] hover:bg-[#ff477e] text-white font-black uppercase text-xs tracking-widest transition-all hover:skew-x-[-3deg] active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2 shadow-[0_4px_15px_rgba(255,46,99,0.3)] relative overflow-hidden"
+                      >
+                        <Play className="w-4 h-4 fill-current animate-pulse" />
+                        Play Solo vs AI
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-4 py-2">
+                      <div className="flex-1 h-[1px] bg-white/10"></div>
+                      <span className="text-[9px] uppercase font-black text-white/20 tracking-[0.3em] font-mono">Or Join Room</span>
+                      <div className="flex-1 h-[1px] bg-white/10"></div>
                     </div>
 
                     <div className="space-y-1 border-l-2 border-white/10 pl-4 hover:border-[#ff2e63] transition-colors">
@@ -502,7 +561,7 @@ export default function App() {
                         onChange={(e) => setRoomId(e.target.value)}
                         placeholder="Enter key..."
                         className="w-full bg-transparent border-none text-2xl font-bold p-0 outline-none placeholder:text-white/10"
-                        required
+                        required={!roomId}
                       />
                     </div>
 
@@ -519,7 +578,7 @@ export default function App() {
                       disabled={isJoining}
                       className="flex-1 px-10 py-5 bg-[#ff2e63] font-black uppercase tracking-widest text-sm hover:skew-x-[-3deg] transition-transform active:scale-95 disabled:opacity-50 shadow-[0_10px_30px_rgba(255,46,99,0.3)]"
                     >
-                      {isJoining ? 'Connecting...' : 'Initialize Link'}
+                      {isJoining ? 'Connecting...' : 'Join / Create Room'}
                     </button>
                     <button
                       type="button"
@@ -658,7 +717,7 @@ export default function App() {
                   <button 
                     onClick={() => setShowGmail(true)}
                     className="p-2 border border-white/10 hover:bg-white/5 transition-colors relative"
-                    title="Gmail Nexus"
+                    title="Invite Friends"
                   >
                     <Mail className="w-4 h-4 text-red-500" />
                     <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
@@ -805,7 +864,7 @@ export default function App() {
                           <Trophy className="w-5 h-5 text-yellow-500" />
                         </div>
                         <div className="text-left">
-                          <h4 className="text-sm font-black uppercase italic tracking-tighter text-white">Hyper Nexus</h4>
+                          <h4 className="text-sm font-black uppercase italic tracking-tighter text-white">Weekly Championship</h4>
                           <div className="flex items-center gap-2">
                             <p className="text-[9px] font-bold uppercase tracking-widest text-[#ff2e63] animate-pulse">Coming Soon</p>
                             <span className="text-[9px] font-bold uppercase tracking-widest text-white/20 line-through">$50,000 USDT</span>
@@ -823,7 +882,14 @@ export default function App() {
           <footer className="mt-8 sm:mt-10 flex flex-wrap justify-between items-end gap-6 border-t border-white/10 pt-8">
             <div className="flex flex-wrap gap-8 sm:gap-12 text-[10px] uppercase tracking-widest text-white/40">
               <div className="flex flex-col gap-1 sm:gap-1"><span className="text-white/20">Ping</span><span className="text-white">24ms</span></div>
-              <div className="flex flex-col gap-1 sm:gap-1"><span className="text-white/20">Session</span><span className="text-white font-mono uppercase">#{gameState.id.slice(0, 5)}</span></div>
+              <div className="flex flex-col gap-1 sm:gap-1">
+                <span className="text-white/20">
+                  {gameState.players.filter((p: Player) => !p.isAI).length === 1 && gameState.players.length > 1 ? "Mode" : "Session"}
+                </span>
+                <span className="text-white font-mono uppercase">
+                  {gameState.players.filter((p: Player) => !p.isAI).length === 1 && gameState.players.length > 1 ? "SOLO VS AI" : `#${gameState.id.slice(0, 5)}`}
+                </span>
+              </div>
               <div className="flex flex-col gap-1 sm:gap-1"><span className="text-white/20">Status</span><span className="text-white text-[#f5d300] uppercase italic font-bold">{gameState.status}</span></div>
             </div>
             <p className="text-[9px] uppercase tracking-tighter text-white/20 italic order-first sm:order-last w-full sm:w-auto">Atomic Engine v.2.4.0-cloud-stable</p>
@@ -886,7 +952,13 @@ export default function App() {
 }
 
 function LobbyView({ gameState, myPlayer, handleToggleReady, handleStartGame, handleUpdateSettings, showSettings, setShowSettings }: any) {
-  const allReady = gameState.players.length >= 2 && gameState.players.every((p: Player) => p.isReady);
+  const onlyHumanIsHost = gameState.players.filter((p: Player) => !p.isAI).length === 1;
+  const isVsAiMode = onlyHumanIsHost && gameState.players.length > 1;
+
+  const allReady = gameState.players.length >= 2 && (
+    gameState.players.every((p: Player) => p.isReady) || 
+    (onlyHumanIsHost && gameState.players.every((p: Player) => p.isAI || p.id === myPlayer?.id))
+  );
 
   const handleAddAI = () => {
     socket.emit('add_ai', gameState.id);
@@ -919,13 +991,19 @@ function LobbyView({ gameState, myPlayer, handleToggleReady, handleStartGame, ha
                   <span className="text-[9px] font-black text-[#ff2e63] uppercase tracking-tighter">{gameState.spectatorCount} Watchers</span>
                 </div>
               )}
-              <button 
-                onClick={handleCopyKey}
-                className="flex items-center gap-1.5 px-2 py-0.5 border border-white/10 rounded-full hover:bg-white/5 transition-colors group/key"
-              >
-                <span className="text-[9px] font-mono font-black text-white/20 uppercase group-hover/key:text-[#ff2e63]">Key: {gameState.id}</span>
-                <Copy className="w-2.5 h-2.5 text-white/10 group-hover/key:text-[#ff2e63]" />
-              </button>
+              {isVsAiMode ? (
+                <div className="flex items-center gap-1.5 px-3 py-0.5 bg-[#08f7fe]/10 border border-[#08f7fe]/30 rounded-full">
+                  <span className="text-[9px] font-black text-[#08f7fe] uppercase tracking-wider">SOLO VS AI MODE</span>
+                </div>
+              ) : (
+                <button 
+                  onClick={handleCopyKey}
+                  className="flex items-center gap-1.5 px-2 py-0.5 border border-white/10 rounded-full hover:bg-white/5 transition-colors group/key"
+                >
+                  <span className="text-[9px] font-mono font-black text-white/20 uppercase group-hover/key:text-[#ff2e63]">Key: {gameState.id}</span>
+                  <Copy className="w-2.5 h-2.5 text-white/10 group-hover/key:text-[#ff2e63]" />
+                </button>
+              )}
            </div>
          </div>
        </div>
@@ -1235,14 +1313,14 @@ function GameView({ gameState, myPlayer, setShowDetailedStats, onExit }: any) {
                     onClick={() => socket.emit('play_again', gameState.id)} 
                     className="w-full sm:w-auto px-12 py-4 bg-[#ff2e63] text-white font-black uppercase tracking-widest text-[10px] hover:skew-x-[-3deg] transition-all hover:scale-105 active:scale-95 shadow-[0_0_30px_rgba(255,46,99,0.3)] flex items-center justify-center gap-3"
                   >
-                    <Zap className="w-5 h-5 fill-current" /> Play Again
+                    <Zap className="w-5 h-5 fill-current" /> Return to Lobby
                   </button>
                 )}
                 <button 
                   onClick={onExit} 
-                  className="w-full sm:w-auto px-8 py-4 bg-white/5 border border-white/10 text-white font-black uppercase tracking-widest text-[10px] hover:border-white/30 transition-colors flex items-center justify-center gap-3 active:scale-95"
+                  className="w-full sm:w-auto px-8 py-4 bg-white/5 border border-white/10 text-white/50 hover:text-white hover:border-white/30 transition-colors flex items-center justify-center gap-3 active:scale-95"
                 >
-                  <LogOut className="w-5 h-5" /> Exit
+                  <LogOut className="w-5 h-5" /> Leave Room
                 </button>
               </div>
             </div>

@@ -1,0 +1,11 @@
+{
+	"appId": "com.atomic.chainreaction",
+	"appName": "Atomic Chain Reaction",
+	"webDir": "dist",
+	"server": {
+		"androidScheme": "https",
+		"allowNavigation": [
+			"ais-pre-qe3to6iu2vbzr6c7fjamed-77707345604.asia-southeast1.run.app"
+		]
+	}
+}

@@ -63,16 +63,23 @@ async function startServer() {
     const nextPlayer = game.players[game.currentTurnIndex];
     if (nextPlayer && nextPlayer.isAI && !nextPlayer.isEliminated && game.status === 'playing') {
       setTimeout(() => {
-        const move = calculateBestMove(game);
+        const liveGame = games[roomId];
+        if (!liveGame || liveGame.status !== "playing") return;
+
+        // Double check that it's still this AI's turn
+        const currentPlayer = liveGame.players[liveGame.currentTurnIndex];
+        if (!currentPlayer || currentPlayer.id !== nextPlayer.id) return;
+
+        const move = calculateBestMove(liveGame);
         if (move) {
-          handleMove(game, roomId, move.x, move.y);
+          handleMove(liveGame, roomId, move.x, move.y);
         } else {
           console.log(`AI ${nextPlayer.name} could not find a move, skipping...`);
-          findNextPlayer(game);
-          game.turnEndTime = Date.now() + TURN_DURATION;
-          game.lastMoveTimestamp = Date.now();
-          io.to(roomId).emit("game_updated", game);
-          checkAndTriggerAI(game, roomId);
+          findNextPlayer(liveGame);
+          liveGame.turnEndTime = Date.now() + TURN_DURATION;
+          liveGame.lastMoveTimestamp = Date.now();
+          io.to(roomId).emit("game_updated", liveGame);
+          checkAndTriggerAI(liveGame, roomId);
         }
       }, 1000); // Delayed for better UX
     }
@@ -261,6 +268,7 @@ async function startServer() {
           const player = game.players[playerIndex];
           
           if (game.status === 'playing') {
+            const wasActivePlayer = playerIndex === game.currentTurnIndex;
             const playerToRemove = game.players[playerIndex];
             game.players.splice(playerIndex, 1);
             
@@ -275,7 +283,7 @@ async function startServer() {
             // Adjust currentTurnIndex
             if (playerIndex < game.currentTurnIndex) {
               game.currentTurnIndex--;
-            } else if (playerIndex === game.currentTurnIndex) {
+            } else if (wasActivePlayer) {
               if (game.currentTurnIndex >= game.players.length) {
                 game.currentTurnIndex = 0;
               }
@@ -288,7 +296,7 @@ async function startServer() {
               game.turnEndTime = undefined;
             } else {
               // Trigger next turn if it was the current player who left
-              if (playerIndex === game.currentTurnIndex) {
+              if (wasActivePlayer) {
                  checkWinCondition(game); // Re-check win condition as someone else might have won
                  if (game.status === 'playing') {
                    checkAndTriggerAI(game, roomId);
@@ -511,6 +519,7 @@ async function startServer() {
               const player = game.players[playerIndex];
               
               if (game.status === 'playing') {
+                const wasActivePlayer = playerIndex === game.currentTurnIndex;
                 const playerToRemove = game.players[playerIndex];
                 game.players.splice(playerIndex, 1);
                 
@@ -525,7 +534,7 @@ async function startServer() {
                 // Adjust currentTurnIndex
                 if (playerIndex < game.currentTurnIndex) {
                   game.currentTurnIndex--;
-                } else if (playerIndex === game.currentTurnIndex) {
+                } else if (wasActivePlayer) {
                   if (game.currentTurnIndex >= game.players.length) {
                     game.currentTurnIndex = 0;
                   }
@@ -539,7 +548,7 @@ async function startServer() {
                   game.turnEndTime = undefined;
                 } else {
                   // Trigger next turn if it was the current player who left
-                  if (playerIndex === game.currentTurnIndex) {
+                  if (wasActivePlayer) {
                     checkWinCondition(game);
                     if (game.status === 'playing') {
                       checkAndTriggerAI(game, roomId);
@@ -581,7 +590,13 @@ async function startServer() {
     firstCell.playerId = playerId;
 
     // Chain reaction
+    let iterations = 0;
     while (queue.length > 0) {
+      iterations++;
+      if (iterations > 10000) {
+        console.error("Safeguard triggered: too many chain reaction explosions!");
+        break;
+      }
       const { x, y, depth } = queue.shift()!;
       maxTurnDepth = Math.max(maxTurnDepth, depth);
       const cell = board[y][x];
@@ -655,11 +670,9 @@ async function startServer() {
     const remainingPlayers = game.players.filter(p => !p.isEliminated);
     
     // Win condition: Only one player remains AND they occupy all current orbs
-    // (In reality, if they are the only ones left, they occupy all current orbs)
-    // The user wants "covers the entire board", let's interpret this as surviving alone.
-    if (remainingPlayers.length === 1 && totalOrbs > 0) {
+    if (remainingPlayers.length <= 1 && totalOrbs > 0) {
       game.status = 'gameover';
-      game.winnerId = remainingPlayers[0].id;
+      game.winnerId = remainingPlayers[0]?.id || game.players[0]?.id || null;
       game.turnEndTime = undefined;
     }
   }
@@ -766,9 +779,10 @@ async function startServer() {
     alpha: number,
     beta: number,
     isMaximizing: boolean,
-    aiPlayerId: string
+    aiPlayerId: string,
+    skips: number = 0
   ): number {
-    if (depth === 0 || game.status === 'gameover') {
+    if (!game.players || game.players.length === 0 || depth === 0 || game.status === 'gameover' || skips >= Math.max(2, game.players.length)) {
       return evaluateBoard(game, aiPlayerId);
     }
 
@@ -776,7 +790,15 @@ async function startServer() {
     if (!currentPlayer || currentPlayer.isEliminated) {
       const nextGame = copyGameState(game);
       findNextPlayer(nextGame);
-      return minimax(nextGame, depth, alpha, beta, nextGame.players[nextGame.currentTurnIndex]?.id === aiPlayerId, aiPlayerId);
+      return minimax(
+        nextGame,
+        depth,
+        alpha,
+        beta,
+        nextGame.players[nextGame.currentTurnIndex]?.id === aiPlayerId,
+        aiPlayerId,
+        skips + 1
+      );
     }
 
     const moves = [];
@@ -806,7 +828,15 @@ async function startServer() {
         checkWinCondition(nextGame);
         if (nextGame.status === 'playing') findNextPlayer(nextGame);
         
-        const evalScore = minimax(nextGame, depth - 1, alpha, beta, nextGame.players[nextGame.currentTurnIndex]?.id === aiPlayerId, aiPlayerId);
+        const evalScore = minimax(
+          nextGame,
+          depth - 1,
+          alpha,
+          beta,
+          nextGame.players[nextGame.currentTurnIndex]?.id === aiPlayerId,
+          aiPlayerId,
+          0
+        );
         maxEval = Math.max(maxEval, evalScore);
         alpha = Math.max(alpha, evalScore);
         if (beta <= alpha) break;
@@ -820,7 +850,15 @@ async function startServer() {
         checkWinCondition(nextGame);
         if (nextGame.status === 'playing') findNextPlayer(nextGame);
         
-        const evalScore = minimax(nextGame, depth - 1, alpha, beta, nextGame.players[nextGame.currentTurnIndex]?.id === aiPlayerId, aiPlayerId);
+        const evalScore = minimax(
+          nextGame,
+          depth - 1,
+          alpha,
+          beta,
+          nextGame.players[nextGame.currentTurnIndex]?.id === aiPlayerId,
+          aiPlayerId,
+          0
+        );
         minEval = Math.min(minEval, evalScore);
         beta = Math.min(beta, evalScore);
         if (beta <= alpha) break;

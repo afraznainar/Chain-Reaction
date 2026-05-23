@@ -60,8 +60,8 @@ export default function GmailPanel({ accessToken, onClose, roomId }: GmailPanelP
             <Mail className="w-5 h-5 text-red-500" />
           </div>
           <div>
-            <h2 className="text-lg font-black uppercase tracking-tighter text-white">Gmail Nexus</h2>
-            <p className="text-[10px] text-white/40 uppercase tracking-widest font-bold">Connected via Secure Protocol</p>
+            <h2 className="text-lg font-black uppercase tracking-tighter text-white">Gmail Invites</h2>
+            <p className="text-[10px] text-white/40 uppercase tracking-widest font-bold">Secure Google Integration</p>
           </div>
         </div>
         <button 
@@ -76,13 +76,13 @@ export default function GmailPanel({ accessToken, onClose, roomId }: GmailPanelP
         {/* Invite Section */}
         <section className="space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-xs font-black uppercase tracking-[0.2em] text-white/40">Transmit Game Invite</h3>
+            <h3 className="text-xs font-black uppercase tracking-[0.2em] text-white/40">Send Game Invite</h3>
           </div>
           <form onSubmit={handleSendInvite} className="flex flex-col gap-2">
             <div className="relative">
               <input
                 type="email"
-                placeholder="Target Email Address..."
+                placeholder="Enter friend's email address..."
                 value={inviteEmail}
                 onChange={(e) => setInviteEmail(e.target.value)}
                 className="w-full bg-white/5 border border-white/10 rounded-none p-4 text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-red-500/50 transition-colors"
@@ -117,7 +117,7 @@ export default function GmailPanel({ accessToken, onClose, roomId }: GmailPanelP
         {/* Inbox Section */}
         <section className="space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-xs font-black uppercase tracking-[0.2em] text-white/40">Recent Transmissions</h3>
+            <h3 className="text-xs font-black uppercase tracking-[0.2em] text-white/40">Recent Emails</h3>
             <button 
               onClick={loadEmails}
               disabled={loading}
@@ -159,7 +159,7 @@ export default function GmailPanel({ accessToken, onClose, roomId }: GmailPanelP
             ) : (
               <div className="py-20 flex flex-col items-center justify-center text-white/20 gap-3 border border-dashed border-white/10">
                 <Inbox className="w-10 h-10 stroke-1" />
-                <span className="text-[10px] font-black uppercase tracking-[0.2em]">Void Detected</span>
+                <span className="text-[10px] font-black uppercase tracking-[0.2em]">Inbox Empty</span>
               </div>
             )}
           </div>
@@ -168,9 +168,8 @@ export default function GmailPanel({ accessToken, onClose, roomId }: GmailPanelP
 
       {/* Footer */}
       <div className="p-6 border-t border-white/5 bg-white/[0.01]">
-        <div className="p-4 bg-red-500/5 border border-red-500/10 rounded-none italic text-[10px] text-red-500/70 leading-relaxed font-serif">
-          Warning: Unauthorized access to encrypted transmissions is strictly prohibited. 
-          Nexus protocols active. Data integrity verified.
+        <div className="p-4 bg-red-500/5 border border-red-500/10 rounded-none italic text-[10px] text-red-500/70 leading-relaxed">
+          Invite friends to play with you by typing in their email addresses above. Safe and secure.
         </div>
       </div>
     </motion.div>

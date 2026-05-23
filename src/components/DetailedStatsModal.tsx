@@ -29,7 +29,7 @@ export default function DetailedStatsModal({ players, winnerId, onClose }: Detai
         <div className="text-center mb-10 shrink-0">
           <div className="inline-flex items-center gap-3 px-4 py-1.5 bg-[#ff2e63]/10 border border-[#ff2e63]/20 rounded-full mb-4">
              <Trophy className="w-4 h-4 text-[#ff2e63]" />
-             <span className="text-[10px] uppercase font-black tracking-[0.2em] text-[#ff2e63]">Game Performance Report</span>
+             <span className="text-[10px] uppercase font-black tracking-[0.2em] text-[#ff2e63]">Match Result Summary</span>
           </div>
           <h2 className="text-4xl sm:text-6xl font-black italic uppercase tracking-tighter skew-x-[-6deg] underline decoration-[#ff2e63] decoration-8">Game Stats</h2>
           <p className="text-[10px] sm:text-[12px] uppercase tracking-[0.3em] font-medium text-white/30 mt-4">Detailed information about the last game</p>
@@ -133,7 +133,7 @@ export default function DetailedStatsModal({ players, winnerId, onClose }: Detai
 
         <div className="mt-8 pt-6 border-t border-white/10 flex justify-between items-center shrink-0">
           <p className="text-[9px] uppercase tracking-tighter text-white/20 italic">
-            Game Engine v2.4.0 // Performance Stats
+            Match Statistics Information
           </p>
           <button 
             onClick={onClose}

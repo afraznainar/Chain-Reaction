@@ -27,8 +27,8 @@ export default function GameSettings({ gridWidth, gridHeight, maxPlayers, isHost
             <Settings className="w-5 h-5 text-[#ff2e63]" />
           </div>
           <div>
-            <h3 className="text-sm font-black uppercase tracking-widest text-white">Arena Config</h3>
-            <p className="text-[10px] text-white/40 font-bold uppercase tracking-tighter">Tactical Grid Calibration</p>
+            <h3 className="text-sm font-black uppercase tracking-widest text-white">Game Settings</h3>
+            <p className="text-[10px] text-white/40 font-bold uppercase tracking-tighter">Adjust Board Size and Players</p>
           </div>
         </div>
       </div>
@@ -39,7 +39,7 @@ export default function GameSettings({ gridWidth, gridHeight, maxPlayers, isHost
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-white/60">
               <LayoutGrid className="w-4 h-4" />
-              <span className="text-[10px] uppercase font-black tracking-widest">Dimension</span>
+              <span className="text-[10px] uppercase font-black tracking-widest">Board Size</span>
             </div>
             <span className="text-xs font-mono font-black text-[#ff2e63]">{gridWidth} x {gridHeight}</span>
           </div>
@@ -75,7 +75,7 @@ export default function GameSettings({ gridWidth, gridHeight, maxPlayers, isHost
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-white/60">
               <Users className="w-4 h-4" />
-              <span className="text-[10px] uppercase font-black tracking-widest">Capacity</span>
+              <span className="text-[10px] uppercase font-black tracking-widest">Max Players</span>
             </div>
             <span className="text-xs font-mono font-black text-[#ff2e63]">{maxPlayers} Slots</span>
           </div>
@@ -102,7 +102,7 @@ export default function GameSettings({ gridWidth, gridHeight, maxPlayers, isHost
           onClick={onClose}
           className="w-full py-4 bg-white text-black text-[11px] font-black uppercase tracking-[0.3em] hover:bg-[#ff2e63] hover:text-white transition-all rounded-xl"
         >
-          Finalize Calibration
+          Apply Settings
         </button>
       </div>
 

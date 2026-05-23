@@ -64,8 +64,8 @@ export default function TournamentPanel({ user, avatar, onClose }: TournamentPan
             <Trophy className="w-6 h-6 text-[#ff2e63]" />
           </div>
           <div>
-            <h2 className="text-2xl font-black uppercase italic tracking-tighter text-white">Hyper Nexus</h2>
-            <p className="text-[10px] text-white/40 uppercase tracking-[0.3em] font-bold">50,000 USDT Season</p>
+            <h2 className="text-2xl font-black uppercase italic tracking-tighter text-white">Championship Tournament</h2>
+            <p className="text-[10px] text-white/40 uppercase tracking-[0.3em] font-bold">Weekly Season</p>
           </div>
         </div>
         <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-full transition-colors group">
@@ -79,12 +79,11 @@ export default function TournamentPanel({ user, avatar, onClose }: TournamentPan
           <Trophy className="w-24 h-24 text-[#ff2e63] relative z-10 animate-bounce" />
         </div>
         <div className="space-y-2">
-          <h3 className="text-4xl font-black italic uppercase tracking-tighter text-white">Protocol Locked</h3>
-          <p className="text-sm text-white/40 font-bold uppercase tracking-[0.3em]">Coming Soon to Nexus</p>
+          <h3 className="text-4xl font-black italic uppercase tracking-tighter text-white">Tournament Locked</h3>
+          <p className="text-sm text-white/40 font-bold uppercase tracking-[0.3em]">Coming Soon</p>
         </div>
         <div className="max-w-xs p-6 border border-white/10 bg-white/[0.02] rounded-3xl italic text-[11px] text-white/30 leading-relaxed">
-          The Hyper Nexus tournament sequence is currently in dry-run mode. 
-          Synchronization with global USDT liquidity pools is pending final validation.
+          The weekly tournament mode is currently under development. Online player match-making systems are being finalized. Check back soon/tomorrow to play!
         </div>
         <div className="flex flex-col gap-4 w-full">
           <div className="p-4 border border-[#ff2e63]/20 bg-[#ff2e63]/5 rounded-2xl flex items-center justify-between">
@@ -103,7 +102,7 @@ export default function TournamentPanel({ user, avatar, onClose }: TournamentPan
         <div className="flex items-center gap-4 text-[10px] text-white/30 font-bold uppercase tracking-wider">
           <div className="flex items-center gap-1.5"><DollarSign className="w-3 h-3 text-[#ff2e63]" /> 1 USDT Entry</div>
           <div className="flex items-center gap-1.5"><RefreshCw className="w-3 h-3 text-yellow-500" /> 2.99 USDT Re-entry</div>
-          <div className="flex items-center gap-1.5 ml-auto"><Award className="w-3 h-3 text-white" /> Limited Slot Nexus</div>
+          <div className="flex items-center gap-1.5 ml-auto"><Award className="w-3 h-3 text-white" /> Limited Slots Available</div>
         </div>
       </div>
     </motion.div>
