@@ -34,6 +34,8 @@ export interface ChatMessage {
   timestamp: number;
   type: 'room' | 'global';
   avatar?: { icon: string; color: string };
+  isSpectator?: boolean;
+  isReaction?: boolean;
 }
 
 export interface Cell {

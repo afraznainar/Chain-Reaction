@@ -806,6 +806,8 @@ export default function App() {
                       user={user} 
                       avatar={avatar} 
                       onClose={() => setShowChat(false)} 
+                      isSpectator={gameState && !gameState.players.some((p: Player) => p.id === socket.id)}
+                      isPlaying={gameState && gameState.status === 'playing'}
                     />
                   </motion.div>
                 ) : (

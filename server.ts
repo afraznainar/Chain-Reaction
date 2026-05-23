@@ -248,6 +248,31 @@ async function startServer() {
     });
 
     socket.on("send_room_chat", ({ roomId, text, senderId, senderName, avatar }: any) => {
+      const SPECTATOR_REACTIONS = [
+        "💥 BOOM!",
+        "⚡ Brilliant Move!",
+        "🤯 Insane Chain!",
+        "😮 So Close!",
+        "👀 Intense!",
+        "🤖 AI is cooking!",
+        "👑 GG!",
+        "💔 Oof!"
+      ];
+
+      const game = games[roomId];
+      const sData = socketData[socket.id];
+      const isSpectator = !!(sData && sData.isSpectator);
+      const isPlaying = game && game.status === 'playing';
+
+      let isReaction = false;
+      if (isSpectator && isPlaying) {
+        if (!SPECTATOR_REACTIONS.includes(text)) {
+          console.log(`Blocked custom/forged spectator chat: "${text}" from ${senderName}`);
+          return;
+        }
+        isReaction = true;
+      }
+
       const msg: ChatMessage = {
         id: Math.random().toString(36).substr(2, 9),
         senderId,
@@ -255,7 +280,9 @@ async function startServer() {
         text,
         timestamp: Date.now(),
         type: 'room',
-        avatar
+        avatar,
+        isSpectator,
+        isReaction
       };
       io.to(roomId).emit("room_chat_message", msg);
     });
