@@ -2,7 +2,7 @@
   "entities": {
     "User": {
       "title": "User",
-      "description": "User statistics and profile data.",
+      "description": "User statistics and profile data including AI vs Player Challenge tracking.",
       "type": "object",
       "properties": {
         "userId": { "type": "string" },
@@ -18,6 +18,13 @@
             "color": { "type": "string" }
           }
         },
+        "hasAiChallengeEntry": { "type": "boolean" },
+        "aiChallengeGamesPlayed": { "type": "number" },
+        "aiChallengeWins": { "type": "number" },
+        "usdtWalletAddress": { "type": "string" },
+        "aiChallengeCompleted": { "type": "boolean" },
+        "aiChallengeSuccess": { "type": "boolean" },
+        "aiChallengeJoinedAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["userId", "displayName", "wins", "losses"]

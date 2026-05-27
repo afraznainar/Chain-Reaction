@@ -61,7 +61,7 @@ export default function Leaderboard({ onClose }: { onClose: () => void }) {
           <div className="space-y-2 overflow-y-auto max-h-[60vh] pr-1 sm:pr-4 custom-scrollbar">
             {players.map((player, index) => (
               <div 
-                key={player.userId || `top-${index}`}
+                key={`world-leader-${player.userId || 'anon'}-${index}`}
                 className="flex flex-col sm:flex-row items-center justify-between p-4 bg-white/[0.02] border border-white/5 rounded-2xl hover:bg-white/[0.05] transition-colors gap-4"
               >
                 <div className="flex items-center gap-4 w-full sm:w-auto">

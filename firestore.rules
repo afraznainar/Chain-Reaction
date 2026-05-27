@@ -19,7 +19,14 @@ service cloud.firestore {
              data.displayName is string && data.displayName.size() <= 64 &&
              data.wins is number && data.wins >= 0 &&
              data.losses is number && data.losses >= 0 &&
-             data.totalGames is number && data.totalGames >= 0;
+             data.totalGames is number && data.totalGames >= 0 &&
+             (!('hasAiChallengeEntry' in data) || data.hasAiChallengeEntry is bool) &&
+             (!('aiChallengeGamesPlayed' in data) || data.aiChallengeGamesPlayed is number) &&
+             (!('aiChallengeWins' in data) || data.aiChallengeWins is number) &&
+             (!('usdtWalletAddress' in data) || (data.usdtWalletAddress is string && data.usdtWalletAddress.size() <= 128)) &&
+             (!('aiChallengeCompleted' in data) || data.aiChallengeCompleted is bool) &&
+             (!('aiChallengeSuccess' in data) || data.aiChallengeSuccess is bool) &&
+             (!('aiChallengeJoinedAt' in data) || data.aiChallengeJoinedAt is string);
     }
 
     match /users/{userId} {
@@ -29,7 +36,11 @@ service cloud.firestore {
       // Only the owner can initialize or update their own stats
       allow create: if isOwner(userId) && isValidUser(incoming()) && incoming().userId == userId;
       allow update: if isOwner(userId) && isValidUser(incoming()) && (
-        incoming().diff(existing()).affectedKeys().hasOnly(['wins', 'losses', 'totalGames', 'displayName', 'photoURL', 'updatedAt', 'avatarConfig'])
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'wins', 'losses', 'totalGames', 'displayName', 'photoURL', 'updatedAt', 'avatarConfig',
+          'hasAiChallengeEntry', 'aiChallengeGamesPlayed', 'aiChallengeWins', 'usdtWalletAddress',
+          'aiChallengeCompleted', 'aiChallengeSuccess', 'aiChallengeJoinedAt'
+        ])
       );
     }
 

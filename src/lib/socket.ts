@@ -8,10 +8,14 @@ const isPackagedApp =
    window.location.hostname === '127.0.0.1') && 
   !window.location.port;
 
-// Target the live deployed Express/Socket.io backend on Cloud Run for packaged mobile builds
-const SERVER_URL = (isPackagedApp || (typeof window !== 'undefined' && window.location.protocol === 'file:'))
-  ? "https://ais-pre-qe3to6iu2vbzr6c7fjamed-77707345604.asia-southeast1.run.app"
-  : "";
+// Target the live deployed Express/Socket.io backend on Cloud Run for packaged mobile builds or environments like Vercel
+const metaEnv = (import.meta as any).env || {};
+const envUrl = metaEnv.VITE_SERVER_URL || metaEnv.VITE_BACKEND_URL;
+const SERVER_URL = envUrl 
+  ? envUrl
+  : (isPackagedApp || (typeof window !== 'undefined' && window.location.protocol === 'file:'))
+    ? "https://ais-pre-qe3to6iu2vbzr6c7fjamed-77707345604.asia-southeast1.run.app"
+    : "";
 
 export const socket = io(SERVER_URL, {
   transports: ["websocket", "polling"],

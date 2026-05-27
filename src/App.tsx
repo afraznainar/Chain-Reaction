@@ -4,9 +4,10 @@ import { socket } from './lib/socket';
 import { GameState, Player, COLOR_MAP, Replay } from './types';
 import { cn } from './lib/utils';
 import { Copy, UserMinus, Globe, BarChart3, Eye, Users, Play, CheckCircle2, User, Trophy, Wallet, Zap, ShieldCheck, LogIn, LogOut, ChevronRight, Volume2, VolumeX, MessageSquare, Film, Mail } from 'lucide-react';
-import { auth, signInWithGoogle, updateMatchResult, updateAvatarPreference, getUserStats, saveReplay } from './lib/firebase';
+import { auth, signInWithGoogle, updateMatchResult, updateAvatarPreference, getUserStats, saveReplay, updateAiChallengeResult } from './lib/firebase';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import Leaderboard from './components/Leaderboard';
+import AiChallengePanel from './components/AiChallengePanel';
 import AvatarCustomizer from './components/AvatarCustomizer';
 import PlayerAvatar from './components/PlayerAvatar';
 import { audioController } from './lib/audio';
@@ -16,6 +17,8 @@ import ReplayPlayer from './components/ReplayPlayer';
 import RoomBrowser from './components/RoomBrowser';
 import DetailedStatsModal from './components/DetailedStatsModal';
 import AtomicBurst from './components/AtomicBurst';
+import LegalNoticeModal from './components/LegalNoticeModal';
+import ConsentBanner from './components/ConsentBanner';
 
 function TurnTimer({ endTime, status }: { endTime?: number, status: string }) {
   const [timeLeft, setTimeLeft] = useState(0);
@@ -192,6 +195,7 @@ export default function App() {
   const [showGmail, setShowGmail] = useState(false);
   const [showTournament, setShowTournament] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [showAiChallenge, setShowAiChallenge] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showReplays, setShowReplays] = useState(false);
@@ -204,6 +208,8 @@ export default function App() {
   const [avatar, setAvatar] = useState({ icon: 'zap', color: '#ff2e63' });
   const [isMuted, setIsMuted] = useState(false);
   const [isAuthChecking, setIsAuthChecking] = useState(true);
+  const [showLegal, setShowLegal] = useState(false);
+  const [legalTab, setLegalTab] = useState<'privacy' | 'terms' | 'dmca' | 'simulator' | 'disclaimer'>('terms');
 
   useEffect(() => {
     audioController.setMuted(isMuted);
@@ -267,6 +273,12 @@ export default function App() {
           
           // Tournament scoring
           updateTournamentScore(user.uid, isWin ? 100 : 0, isWin).catch(console.error);
+
+          // AI Challenge scoring - Only if matches were against AI players in a solo room
+          const isVsAiMode = updatedGame.players.filter(p => !p.isAI).length === 1 && updatedGame.players.length > 1;
+          if (isVsAiMode) {
+            updateAiChallengeResult(user.uid, isWin).catch(console.error);
+          }
           
           setHasReportedResult(true);
         }
@@ -450,7 +462,8 @@ export default function App() {
   }
 
   return (
-    <AnimatePresence mode="wait">
+    <>
+      <AnimatePresence mode="wait">
       {!gameState ? (
         <motion.div 
           key="join-screen"
@@ -601,8 +614,20 @@ export default function App() {
               <button onClick={() => setShowReplays(true)} className="text-[10px] uppercase tracking-widest font-black text-white/30 hover:text-[#ff2e63] transition-colors flex items-center gap-2">
                 <Film className="w-3 h-3" /> Archives
               </button>
+              <button onClick={() => setShowAiChallenge(true)} className="text-[10px] uppercase tracking-widest font-black text-white/30 hover:text-cyan-400 transition-colors flex items-center gap-2">
+                <Zap className="w-3 h-3 text-cyan-400" /> AI Challenge
+              </button>
               <button onClick={handleBuyPremium} className="text-[10px] uppercase tracking-widest font-black text-white/30 hover:text-white transition-colors">
                 Store
+              </button>
+              <button type="button" onClick={() => { setLegalTab('terms'); setShowLegal(true); }} className="text-[10px] uppercase tracking-widest font-black text-white/30 hover:text-white transition-colors">
+                Terms
+              </button>
+              <button type="button" onClick={() => { setLegalTab('privacy'); setShowLegal(true); }} className="text-[10px] uppercase tracking-widest font-black text-white/30 hover:text-white transition-colors">
+                Privacy
+              </button>
+              <button type="button" onClick={() => { setLegalTab('disclaimer'); setShowLegal(true); }} className="text-[10px] uppercase tracking-widest font-black text-white/30 hover:text-orange-500 transition-colors">
+                Safety Disclaimers
               </button>
               <div className="hidden sm:block flex-1 h-[2px] bg-white/5"></div>
               <p className="text-[10px] text-white/20 font-mono italic w-full sm:w-auto">#SESSION_INIT_001</p>
@@ -857,6 +882,25 @@ export default function App() {
                       </div>
                     </div>
 
+                    <div className="p-1 bg-gradient-to-r from-cyan-500/50 via-white/20 to-purple-500/50 rounded-xl">
+                      <button 
+                        onClick={() => setShowAiChallenge(true)}
+                        className="w-full p-4 bg-black rounded-[0.65rem] hover:bg-white/5 transition-all group relative overflow-hidden flex items-center gap-4 shadow-[0_0_20px_rgba(8,247,254,0.15)]"
+                      >
+                        <div className="p-2 bg-cyan-500/20 rounded-lg shrink-0">
+                          <Zap className="w-5 h-5 text-cyan-400 animate-pulse" />
+                        </div>
+                        <div className="text-left">
+                          <h4 className="text-sm font-black uppercase italic tracking-tighter text-white">AI Slayer Challenge</h4>
+                          <div className="flex items-center gap-2">
+                            <p className="text-[9px] font-bold uppercase tracking-widest text-[#08f7fe] animate-pulse">Win 99 USDT</p>
+                            <span className="text-[9px] font-bold uppercase tracking-widest text-white/45">• Entry $2.99</span>
+                          </div>
+                        </div>
+                        <ChevronRight className="w-4 h-4 ml-auto text-white/20 group-hover:text-white transition-colors" />
+                      </button>
+                    </div>
+
                     <div className="p-1 bg-gradient-to-r from-yellow-500/50 via-white/20 to-yellow-500/50 rounded-xl">
                       <button 
                         onClick={() => setShowTournament(true)}
@@ -946,11 +990,29 @@ export default function App() {
                 onClose={() => setShowTournament(false)} 
               />
             )}
+            {showAiChallenge && (
+              <AiChallengePanel 
+                user={user} 
+                onClose={() => setShowAiChallenge(false)} 
+              />
+            )}
           </AnimatePresence>
         </motion.div>
       )}
     </AnimatePresence>
-  );
+
+    <ConsentBanner onOpenLegal={(tab) => { setLegalTab(tab); setShowLegal(true); }} />
+
+    <AnimatePresence>
+      {showLegal && (
+        <LegalNoticeModal
+          defaultTab={legalTab}
+          onClose={() => setShowLegal(false)}
+        />
+      )}
+    </AnimatePresence>
+  </>
+);
 }
 
 function LobbyView({ gameState, myPlayer, handleToggleReady, handleStartGame, handleUpdateSettings, showSettings, setShowSettings }: any) {
